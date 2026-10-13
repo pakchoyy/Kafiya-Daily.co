@@ -1,6 +1,6 @@
 :root {
-  --ink: #1F1A16; --sand: #B39477; --sand-d: #957659; --rose: #C89B87; --brown: #735940;
-  --bg: #EFEAE3; --paper: #F7F3EE; --card: #FBF9F6; --line: #D9D0C5; --text: #1F1A16; --muted: #857868;
+  --ink: #4A4039; --sand: #A99583; --sand-d: #8F7B6A; --rose: #D4B5A8; --brown: #8A7363;
+  --bg: #F6F4F1; --paper: #FAF9F7; --card: #FFFFFF; --line: #E6E0D9; --text: #3E3630; --muted: #948A80;
   --ok: #4A6B4E; --warn: #96621A; --bad: #9E3B33;
   --serif: 'Bodoni Moda', 'Playfair Display', Georgia, serif;
 }
@@ -16,8 +16,8 @@ header.top .brand { height: 42px; justify-self: center; object-fit: contain; }
 .hbtn { width: 44px; height: 44px; display: grid; place-items: center; color: var(--ink); }
 main { padding: 20px 18px; max-width: 560px; margin: 0 auto; }
 .eyebrow { margin: 0 0 6px; font-size: 11px; font-weight: 500; letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
-.display { font-family: var(--serif); font-weight: 500; font-size: 36px; line-height: 1.05; margin: 0 0 20px; letter-spacing: -.01em; }
-.display.xl { font-size: 44px; color: #fff; margin: 6px 0 12px; }
+.display { font-family: var(--serif); font-weight: 400; font-size: 34px; line-height: 1.05; margin: 0 0 20px; letter-spacing: -.01em; }
+.display.xl { font-size: 40px; color: var(--text); margin: 6px 0 12px; }
 h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .22em; color: var(--muted); margin: 28px 0 10px; font-weight: 500; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
 .card { background: var(--card); border: 1px solid var(--line); padding: 16px; margin-bottom: 12px; }
 .muted { color: var(--muted); font-size: 14px; }
@@ -27,9 +27,8 @@ h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .22em; color: v
 .grow { flex: 1; min-width: 0; }
 .spread { justify-content: space-between; }
 
-.hero { margin: -20px -18px 0; padding: 40px 22px 28px; color: #fff;
-  background: linear-gradient(180deg, rgba(31,26,22,.15), rgba(31,26,22,.75)), radial-gradient(120% 80% at 80% 10%, #C89B87, #735940 55%, #2B221B); }
-.eyebrow.light { color: rgba(255,255,255,.8); }
+.hero { margin: -20px -18px 0; padding: 32px 22px 26px; color: var(--text); background: linear-gradient(160deg, #FBF6F3 0%, #F3EAE4 100%); border-bottom: 1px solid var(--line); }
+.eyebrow.light { color: var(--muted); }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); margin: 0 -18px 16px; background: var(--paper); }
 .stats div { padding: 14px 10px; text-align: center; border-right: 1px solid var(--line); }
 .stats div:last-child { border-right: 0; }
@@ -86,11 +85,10 @@ nav.bottom a.on { color: var(--ink); font-weight: 600; }
 .slots button { min-height: 64px; border: 1px dashed var(--line); border-radius: 2px; background: var(--card); font-family: var(--serif); font-size: 22px; line-height: 1.1; }
 .slots button small { display: block; font-family: Jost, sans-serif; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .slots .used { background: var(--bg); color: var(--muted); border-style: solid; }
-.slots .next { border: 1px solid var(--ink); background: var(--ink); color: #fff; }
-.slots .next small { color: rgba(255,255,255,.75); }
+.slots .next { border: 1.5px solid var(--sand); background: #F5EDE7; color: var(--text); }
 
 .preview { display: grid; justify-content: center; padding: 18px 0; gap: 12px; background: var(--paper); margin: 0 -18px; }
-.preview .label { background: #fff; box-shadow: 0 12px 30px rgba(31,26,22,.14); }
+.preview .label { background: #fff; box-shadow: 0 6px 20px rgba(62,54,48,.08); border: 1px solid var(--line); }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper b { min-width: 64px; text-align: center; }
 .stepper .btn { padding: 0; width: 46px; font-size: 18px; }
@@ -102,7 +100,7 @@ nav.bottom a.on { color: var(--ink); font-weight: 600; }
 .sheet-modal h2 { margin-top: 0; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
-#toast { position: fixed; left: 50%; bottom: calc(84px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 18px; font-size: 13px; letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; max-width: 90vw; text-align: center; }
+#toast { position: fixed; left: 50%; top: calc(70px + env(safe-area-inset-top)); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 99px; padding: 10px 18px; font-size: 13px; letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; max-width: 90vw; text-align: center; }
 #toast.show { opacity: 1; }
 
 /* ---------- Label 7 × 5 cm (dipakai di pratinjau dan cetak) ---------- */

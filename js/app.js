@@ -373,6 +373,7 @@ async function viewPengaturan() {
 
 // ---------- router ----------
 async function render() {
+  document.getElementById('toast').classList.remove('show');
   const [path, q] = location.hash.slice(1).split('?');
   const qs = new URLSearchParams(q || '');
   try {
