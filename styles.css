@@ -67,6 +67,12 @@ input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--ink); }
 nav.bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; background: var(--paper); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
 nav.bottom a { flex: 1; min-height: 60px; display: grid; place-items: center; align-content: center; gap: 3px; text-decoration: none; color: var(--muted); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; }
 nav.bottom a.on { color: var(--ink); font-weight: 600; }
+nav.bottom a.fab { overflow: visible; }
+nav.bottom .fab-in { width: 58px; height: 58px; margin-top: -26px; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: var(--sand); box-shadow: 0 8px 20px rgba(143,123,106,.45), 0 0 0 5px var(--paper); transition: transform .15s; }
+nav.bottom a.fab:active .fab-in { transform: scale(.94); }
+nav.bottom a.fab.on .fab-in { background: var(--ink); }
+.item .icon-btn { width: 40px; height: 40px; margin: 0 -4px; }
 
 .item { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); color: inherit; min-height: 64px; text-decoration: none; }
 .item .t { font-weight: 500; letter-spacing: .04em; word-break: break-all; }
@@ -100,8 +106,24 @@ nav.bottom a.on { color: var(--ink); font-weight: 600; }
 .sheet-modal h2 { margin-top: 0; }
 @keyframes fade { from { opacity: 0; } }
 @keyframes up { from { transform: translateY(30px); opacity: 0; } }
-#toast { position: fixed; left: 50%; top: calc(70px + env(safe-area-inset-top)); transform: translateX(-50%); background: var(--ink); color: #fff; border-radius: 99px; padding: 10px 18px; font-size: 13px; letter-spacing: .04em; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 30; max-width: 90vw; text-align: center; }
-#toast.show { opacity: 1; }
+#toast { position: fixed; left: 50%; top: calc(12px + env(safe-area-inset-top)); transform: translate(-50%, -20px); z-index: 40; display: flex; align-items: center; gap: 10px;
+  max-width: min(92vw, 440px); padding: 12px 18px 12px 14px; border-radius: 16px; background: #fff; color: var(--text); font-size: 14px; line-height: 1.35;
+  box-shadow: 0 10px 30px rgba(62,54,48,.18), 0 0 0 1px var(--line); opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s cubic-bezier(.2,.9,.3,1.2); }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast svg { flex: none; padding: 4px; width: 28px; height: 28px; border-radius: 50%; }
+#toast.toast-ok svg { background: #E4F1E6; color: var(--ok); }
+#toast.toast-warn svg { background: #FCEBD2; color: var(--warn); }
+#toast.toast-err svg { background: #F8E1DE; color: var(--bad); }
+
+.overlay.center { align-items: center; justify-items: center; padding: 20px; }
+.dialog { background: var(--card); width: 100%; max-width: 340px; padding: 24px 20px 18px; border-radius: 22px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.25); animation: pop .18s ease-out; }
+.dialog h3 { margin: 10px 0 6px; font-size: 18px; font-weight: 600; }
+.dialog p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+.dialog .btn { border-radius: 12px; }
+.dialog-ic { width: 52px; height: 52px; margin: 0 auto; border-radius: 50%; display: grid; place-items: center; background: #F5EDE7; color: var(--sand-d); }
+.dialog-ic.danger { background: #F8E1DE; color: var(--bad); }
+.btn.red { background: var(--bad); }
+@keyframes pop { from { transform: scale(.92); opacity: 0; } }
 
 /* ---------- Label 7 × 5 cm (dipakai di pratinjau dan cetak) ---------- */
 .label { width: 70mm; height: 50mm; padding: 2.5mm; display: flex; flex-direction: column; overflow: hidden; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; line-height: 1.15; }
@@ -131,7 +153,8 @@ nav.bottom a.on { color: var(--ink); font-weight: 600; }
 #print-root { position: absolute; left: -10000px; top: 0; width: 210mm; }
 .sheet { position: relative; width: 210mm; height: 296mm; overflow: hidden; page-break-after: always; break-after: page; }
 .sheet:last-child { page-break-after: auto; break-after: auto; }
-.sheet .slot { position: absolute; left: calc(70mm + var(--dx, 0mm)); margin-top: var(--dy, 0mm); }
+.sheet .slot { position: absolute; left: calc(var(--col, 70mm) + var(--dx, 0mm)); margin-top: var(--dy, 0mm); }
+.sheet .cuts { position: absolute; left: 0; top: 0; fill: none; stroke: #9a9a9a; stroke-width: .2; stroke-dasharray: 1.5 1; }
 @page { size: A4; margin: 0; }
 @media print {
   html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }

@@ -3,7 +3,7 @@ import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extra
 import { readImage } from './ocr.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
-import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS } from './label.js';
+import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS, PAPERS } from './label.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
@@ -18,10 +18,67 @@ const $$ = (s, r = app) => [...r.querySelectorAll(s)];
 const fmtDate = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 let toastT;
-function toast(msg) {
+// type: 'ok' | 'warn' | 'err'. Tanpa type, kalimat yang mengandung gagal/tidak dianggap peringatan.
+function toast(msg, type) {
+  type ||= /gagal|tidak|wajib|bukan|error/i.test(msg) ? 'warn' : 'ok';
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600);
+  const icon = { ok: '<path d="M20 6 9 17l-5-5"/>', warn: '<path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/>', err: '<path d="M18 6 6 18M6 6l12 12"/>' }[type];
+  t.className = `toast-${type}`;
+  t.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${icon}</svg><span>${esc(msg)}</span>`;
+  requestAnimationFrame(() => t.classList.add('show'));
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+// Pengganti confirm(): dialog di tengah layar, mengembalikan Promise<boolean>.
+function ask(title, msg, { ok = 'Ya', danger = false } = {}) {
+  return new Promise((res) => {
+    const o = document.createElement('div');
+    o.className = 'overlay center';
+    o.innerHTML = `<div class="dialog" role="alertdialog" aria-modal="true">
+      <div class="dialog-ic ${danger ? 'danger' : ''}">${ic(danger ? 'trash' : 'printer', 22)}</div>
+      <h3>${esc(title)}</h3>${msg ? `<p>${esc(msg)}</p>` : ''}
+      <div class="row"><button class="btn ghost grow" data-a="0">Batal</button><button class="btn grow ${danger ? 'red' : ''}" data-a="1">${esc(ok)}</button></div></div>`;
+    const done = (v) => { o.remove(); res(v); };
+    o.addEventListener('click', (e) => { if (e.target === o) done(false); const a = e.target.closest('[data-a]'); if (a) done(a.dataset.a === '1'); });
+    document.body.append(o);
+    o.querySelector('[data-a="1"]').focus();
+  });
+}
+
+// Ubah atau hapus satu pesanan. onDone dipanggil setelah tersimpan/terhapus.
+function editOrder(o, onDone) {
+  const w = o.type !== 'shopee';
+  modal(`<h2>Ubah pesanan ${w ? esc(o.courier) : 'Shopee'}</h2>
+    ${w ? `<label class="f">Nama penerima</label><input type="text" id="en" value="${esc(o.name)}">
+    <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
+    <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
+    <div class="row"><div class="grow"><label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}"></div>
+    <div style="width:110px"><label class="f">Berat (kg)</label><input type="number" id="ew" step="0.1" value="${esc(o.weight)}"></div></div>` : ''}
+    <label class="f">No. resi</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
+    <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
+    <button class="btn block" id="es">Simpan perubahan</button>
+    <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
+    $('#es', m).onclick = async () => {
+      const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
+      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', weight: $('#ew', m).value.trim() });
+      if (!v.resi || (w && (!v.name || !v.address))) return toast('Nama, alamat, dan no. resi wajib diisi.');
+      await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
+    };
+    $('#ed', m).onclick = async () => {
+      if (!await ask('Hapus pesanan ini?', `${o.resi} akan dihapus permanen.`, { ok: 'Hapus', danger: true })) return;
+      await db.del('orders', o.id); close(); toast('Pesanan dihapus.'); onDone();
+    };
+  });
+}
+const orderBtns = (o) => `<button class="icon-btn" data-edit="${o.id}" aria-label="Ubah">${ic('edit', 18)}</button><button class="icon-btn" data-del="${o.id}" aria-label="Hapus">${ic('trash', 18)}</button>`;
+function bindOrderBtns(orders, refresh) {
+  $$('[data-edit]').forEach((b) => b.onclick = (e) => { e.preventDefault(); editOrder(orders.find((o) => o.id === Number(b.dataset.edit)), refresh); });
+  $$('[data-del]').forEach((b) => b.onclick = async (e) => {
+    e.preventDefault();
+    const o = orders.find((x) => x.id === Number(b.dataset.del));
+    if (!await ask('Hapus pesanan ini?', `${o.resi} akan dihapus permanen.`, { ok: 'Hapus', danger: true })) return;
+    await db.del('orders', o.id); toast('Pesanan dihapus.'); refresh();
+  });
 }
 
 function modal(html, mount) {
@@ -46,6 +103,7 @@ const ICON = {
   printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   chev: '<path d="M9 18l6-6-6-6"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -68,18 +126,20 @@ function bindInstall() {
   if (b) b.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; render(); };
 }
 
-const EYEBROW = { Pesanan: 'Kafiya Daily', 'Pesanan baru': 'Buat label', Cetak: 'Stiker A4 · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
+const EYEBROW = { Pesanan: 'Kafiya Daily', 'Pesanan baru': 'Buat label', Cetak: 'Stiker · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
 
 function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}) {
   app.innerHTML = `<header class="top">
     ${back ? `<a class="hbtn" href="#/" aria-label="Kembali">${ic('back', 22)}</a>` : '<span class="hbtn"></span>'}
     <img class="brand" src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}">
-    <a class="hbtn" href="#/baru" aria-label="Pesanan baru">${ic('plus', 22)}</a>
+    <span class="hbtn"></span>
   </header>
   <main>${hero ? '' : `<p class="eyebrow">${esc(EYEBROW[title] || '')}</p><h1 class="display">${esc(title)}</h1>`}${body}</main>
   <nav class="bottom">
-    ${[['pesanan', '', 'list', 'Pesanan'], ['cetak', 'cetak', 'printer', 'Cetak'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Pengaturan']]
-      .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
+    ${[['pesanan', '', 'list', 'Pesanan'], ['cetak', 'cetak', 'printer', 'Cetak'], ['baru', 'baru', 'plus', 'Baru'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Atur']]
+      .map(([k, h, i, l]) => k === 'baru'
+        ? `<a href="#/baru" class="fab ${nav === k ? 'on' : ''}" aria-label="Pesanan baru"><span class="fab-in">${ic(i, 26)}</span></a>`
+        : `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
   </nav>`;
   bindInstall();
 }
@@ -113,11 +173,9 @@ async function viewPesanan() {
         <div class="muted ell">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
       </a>
       <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
-      <button class="icon-btn" data-del="${o.id}" aria-label="Hapus">${ic('trash', 18)}</button>
+      ${orderBtns(o)}
     </div>`).join('') : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
-  $$('[data-del]').forEach((b) => b.onclick = async () => {
-    if (confirm('Hapus pesanan ini?')) { await db.del('orders', Number(b.dataset.del)); viewPesanan(); }
-  });
+  bindOrderBtns(orders, viewPesanan);
 }
 
 // ---------- Pesanan baru ----------
@@ -152,7 +210,7 @@ async function viewBaru() {
     <div id="resisum"></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
   frame('Pesanan baru', `<div class="tabs"><button data-m="wahana" class="${d.mode === 'wahana' ? 'on' : ''}">Wahana</button><button data-m="shopee" class="${d.mode === 'shopee' ? 'on' : ''}">Shopee</button></div>
-    ${d.mode === 'wahana' ? wahana : shopee}`, { back: true });
+    ${d.mode === 'wahana' ? wahana : shopee}`, { back: true, nav: 'baru' });
 
   $$('.tabs button').forEach((b) => b.onclick = () => { d.mode = b.dataset.m; viewBaru(); });
   const bind = (id, key, fn) => { const el = $('#' + id); if (el) el.oninput = () => { d[key] = el.type === 'checkbox' ? el.checked : el.value; fn?.(); }; };
@@ -299,9 +357,9 @@ async function viewCetak(qs) {
     <div class="muted" style="margin-top:6px">Ketuk slot untuk mengganti slot berikutnya.</div>
     ${remaining.length && !pend ? `<div class="card" style="margin-top:12px">${chunk.length} label dicetak di lembar ini (slot ${next}–${next + chunk.length - 1})${remaining.length > chunk.length ? `, sisa ${remaining.length - chunk.length} di lembar berikutnya` : ''}.</div>
     <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>
-    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG (A4)</button>` : ''}
+    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
     <button class="btn ghost block" id="newsheet">Lembar baru, mulai dari slot 1</button>
-    <p class="muted" style="text-align:center">Di dialog cetak pilih A4, skala 100%, tanpa margin/header. JPG: cetak di A4 dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
+    <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).name.split(' ')[0])}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
   const warn = $$('#prev .label').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
@@ -339,10 +397,12 @@ async function viewAntrian() {
       <input type="checkbox" data-q="${o.id}" checked>
       <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
       <span class="grow"><span class="t" style="display:block">${esc(o.resi)}</span><span class="muted ell" style="display:block">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
+      ${orderBtns(o)}
     </label>`).join('')}
     <button class="btn block" id="go">${ic('printer', 20)} Lanjut ke cetak</button>`
     : `<div class="empty">${ic('printer', 40)}<p>Semua label sudah dicetak.<br>Pesanan baru akan muncul di sini.</p></div>
        <a class="btn ghost block" href="#/baru">${ic('plus', 18)} Pesanan baru</a>`}`, { nav: 'cetak' });
+  bindOrderBtns(todo, viewAntrian);
   const boxes = $$('[data-q]');
   const upd = () => { const n = boxes.filter((b) => b.checked).length; const g = $('#go'); if (g) { g.disabled = !n; g.innerHTML = `${ic('printer', 20)} Lanjut cetak ${n} label`; } };
   boxes.forEach((b) => b.onchange = upd); upd();
@@ -368,7 +428,7 @@ async function viewPelanggan() {
       const read = () => ({ ...c, name: $('#cn', o).value.trim(), phone: normalizePhone($('#cp', o).value) || $('#cp', o).value.trim(), address: $('#ca', o).value.trim() });
       $('#cs', o).onclick = async () => { const v = read(); if (!v.name) return toast('Nama wajib diisi.'); await db.put('customers', v); close(); viewPelanggan(); };
       $('#co', o).onclick = () => { const v = read(); Object.assign(draft, { mode: 'wahana', name: v.name, phone: v.phone, address: v.address }); close(); location.hash = '#/baru'; };
-      $('#cd', o).onclick = async () => { if (confirm('Hapus pelanggan ini? Label lama tidak berubah.')) { await db.del('customers', c.id); close(); viewPelanggan(); } };
+      $('#cd', o).onclick = async () => { if (await ask('Hapus pelanggan ini?', 'Label pesanan lama tidak berubah.', { ok: 'Hapus', danger: true })) { await db.del('customers', c.id); close(); viewPelanggan(); } };
     });
   });
 }
@@ -390,6 +450,12 @@ async function viewPengaturan() {
       <div class="muted" style="margin-top:6px">${shop.logo ? 'Logo kustom dipakai.' : 'Logo Kafiya Daily bawaan dipakai.'} Logo baru: latar putih dihapus otomatis dan ruang kosong dipotong.</div>
       <div class="row" style="margin-top:12px"><input type="checkbox" id="bw" ${shop.bw ? 'checked' : ''}><label for="bw">Logo hitam-putih di label (hemat tinta)</label></div>
     </div>
+    <h2>Kertas</h2><div class="card">
+      <label class="f" for="pp" style="margin-top:0">Ukuran kertas stiker</label>
+      <select id="pp">${Object.entries(PAPERS).map(([k, p]) => `<option value="${k}" ${shop.paper === k ? 'selected' : ''}>${p.name}</option>`).join('')}</select>
+      <div class="row" style="margin-top:14px"><input type="checkbox" id="cl" ${shop.cutLines !== false ? 'checked' : ''}><label for="cl">Garis putus-putus bantu gunting</label></div>
+      <div class="muted" style="margin-top:6px">Di dialog cetak, pilih ukuran kertas yang sama (${esc((PAPERS[shop.paper] || PAPERS.A4).name)}).</div>
+    </div>
     <h2>Posisi cetak</h2><div class="card">
       ${stepper('dx', 'Kiri / kanan', '')}${stepper('dy', 'Atas / bawah', '')}
       <div class="muted" style="margin-top:8px">Per 1 mm. Plus = ke kanan / ke bawah. Cetak halaman tes di kertas biasa, lalu tumpuk ke stiker dan terawang ke lampu.</div>
@@ -409,6 +475,8 @@ async function viewPengaturan() {
   $('#sn').onchange = (e) => saveShop({ name: e.target.value.trim() || 'Kafiya Daily' });
   $('#sp').onchange = (e) => saveShop({ phone: e.target.value.trim() });
   $('#bw').onchange = (e) => saveShop({ bw: e.target.checked });
+  $('#pp').onchange = async (e) => { await saveShop({ paper: e.target.value }); viewPengaturan(); toast(`Kertas: ${PAPERS[e.target.value].name}`); };
+  $('#cl').onchange = (e) => saveShop({ cutLines: e.target.checked });
   $$('[data-st]').forEach((b) => b.onclick = async () => {
     const k = b.dataset.st;
     await saveShop({ [k]: Math.max(-20, Math.min(20, shop[k] + Number(b.dataset.d))) });
@@ -436,7 +504,7 @@ async function viewPengaturan() {
     const f = e.target.files[0]; if (!f) return;
     try {
       const data = JSON.parse(await f.text());
-      if (!confirm(`Restore akan MENGGANTI semua data di HP ini dengan isi file (${data.orders?.length ?? 0} pesanan, ${data.customers?.length ?? 0} pelanggan). Lanjut?`)) return;
+      if (!await ask('Ganti semua data?', `Data di HP ini akan diganti isi file: ${data.orders?.length ?? 0} pesanan, ${data.customers?.length ?? 0} pelanggan.`, { ok: 'Restore', danger: true })) return;
       await db.importAll(data);
       shop = await db.getShop();
       viewPengaturan(); toast('Data berhasil dipulihkan.');
