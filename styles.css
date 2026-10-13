@@ -108,6 +108,10 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .tabs.sub button { min-height: 40px; font-size: 11px; }
 .item-card .sp-thumb { width: 100%; max-height: 300px; object-fit: contain; background: #fff; border: 1px solid var(--line); margin-top: 8px; }
+.filters input[type=search] { width: 100%; min-height: 46px; padding: 10px 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 2px; outline: none; }
+.filters input[type=search]:focus { border-color: var(--ink); }
+.filters select { min-height: 44px; font-size: 14px; }
+.filters input[type=date] { width: 100%; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line); background: var(--card); font-size: 16px; }
 .manual { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; margin-top: 16px; }
 .manual summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 500; min-height: 32px; }
 .manual summary::-webkit-details-marker { display: none; }

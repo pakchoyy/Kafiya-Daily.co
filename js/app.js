@@ -2,13 +2,13 @@ import * as db from './db.js';
 import { parseChat, normalizePhone } from './parser.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
-import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, paper, layout, usedMM, labelH } from './label.js';
+import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, layout } from './label.js';
 import { readAny } from './shopee.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 20; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 21; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -164,12 +164,23 @@ async function viewPesanan() {
     <div class="stats">
       <div><b>${todo}</b><span>Belum dicetak</span></div>
       <div><b>${today}</b><span>Hari ini</span></div>
-      <div><b>${cm(paper(shop).cap - usedMM(shop))}<small> cm</small></b><span>Sisa kertas</span></div>
+      <div><b>${orders.length}</b><span>Total pesanan</span></div>
     </div>
     <div class="install-slot">${installCard()}</div>
     ${remind}
     <h2>Riwayat pesanan</h2>
-    ${orders.length ? orders.map((o) => `<div class="item">
+    ${orders.length ? `<div class="filters">
+      <input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}">
+      <div class="row" style="margin-top:8px">
+        <select id="fd">${[['all', 'Semua tanggal'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari terakhir'], ['day', 'Pilih tanggal…']].map(([v, l]) => `<option value="${v}" ${listFilter.date === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="fs">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak']].map(([v, l]) => `<option value="${v}" ${listFilter.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      </div>
+      <input type="date" id="fday" value="${esc(listFilter.day)}" style="margin-top:8px;${listFilter.date === 'day' ? '' : 'display:none'}">
+    </div>
+    <div class="muted" id="fcount" style="margin:10px 2px"></div>
+    <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
+  if (!orders.length) return;
+  const row = (o) => `<div class="item">
       <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
         <div class="t">${resiText(o)}</div>
@@ -177,8 +188,36 @@ async function viewPesanan() {
       </a>
       <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
       ${orderBtns(o)}
-    </div>`).join('') : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
-  bindOrderBtns(orders, viewPesanan);
+    </div>`;
+  // Saring tanpa render ulang seluruh halaman supaya kolom cari tetap fokus.
+  const draw = () => {
+    const list = filterOrders(orders, listFilter);
+    $('#fcount').textContent = list.length === orders.length ? `${orders.length} pesanan` : `${list.length} dari ${orders.length} pesanan`;
+    $('#olist').innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><p>Tidak ada pesanan yang cocok.</p></div>';
+    bindOrderBtns(list, viewPesanan);
+  };
+  $('#fq').oninput = (e) => { listFilter.q = e.target.value; draw(); };
+  $('#fd').onchange = (e) => { listFilter.date = e.target.value; $('#fday').style.display = e.target.value === 'day' ? '' : 'none'; if (e.target.value === 'day' && !listFilter.day) $('#fday').showPicker?.(); draw(); };
+  $('#fday').onchange = (e) => { listFilter.day = e.target.value; draw(); };
+  $('#fs').onchange = (e) => { listFilter.status = e.target.value; draw(); };
+  draw();
+}
+
+const listFilter = { q: '', date: 'all', day: '', status: 'all' };
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function filterOrders(orders, f) {
+  const now = new Date(), today = dayKey(now), yday = dayKey(new Date(now - 864e5)), weekAgo = now - 7 * 864e5;
+  const q = f.q.trim().toLowerCase();
+  return orders.filter((o) => {
+    const t = new Date(o.createdAt), k = dayKey(t);
+    if (f.date === 'today' && k !== today) return false;
+    if (f.date === 'yday' && k !== yday) return false;
+    if (f.date === 'week' && t < weekAgo) return false;
+    if (f.date === 'day' && f.day && k !== f.day) return false;
+    if (f.status === 'todo' && o.printed) return false;
+    if (f.status === 'done' && !o.printed) return false;
+    return !q || [o.resi, o.name, o.phone, o.address, o.courier].some((v) => String(v || '').toLowerCase().includes(q));
+  });
 }
 
 // ---------- Pesanan baru ----------
@@ -203,7 +242,9 @@ async function viewBaru() {
     <button class="btn block big" id="up">${ic('download', 20)} Upload screenshot / PDF</button>
     <input type="file" id="upf" accept="image/*,application/pdf" multiple hidden>
     <p class="muted" style="margin-top:8px">Bisa campur dan banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>PDF / screenshot label Shopee</b> jadi label Shopee. Tinggal cek hasilnya.</p>
-    ${items.length ? `<h2>${items.length} pesanan siap</h2>${items.map(card).join('')}` : ''}
+    ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn ghost sm" id="reset">Reset</button></div>
+    ${items.map(card).join('')}
+    <button class="btn ghost block" id="more">${ic('plus', 18)} Tambah file lagi</button>` : ''}
     <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
       ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
         <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
@@ -233,10 +274,17 @@ async function viewBaru() {
 
   // upload otomatis
   $('#up').onclick = () => $('#upf').click();
+  $('#more')?.addEventListener('click', () => $('#upf').click());
+  // Tombol + di menu bawah: di halaman ini langsung menambah file ke daftar.
+  $('nav .fab').onclick = (e) => { e.preventDefault(); $('#upf').click(); };
+  $('#reset')?.addEventListener('click', async () => {
+    if (!await ask('Kosongkan daftar?', `${items.length} pesanan yang belum disimpan akan dibuang.`, { ok: 'Reset', danger: true })) return;
+    items.length = 0; viewBaru(); toast('Daftar dikosongkan.');
+  });
   $('#upf').onchange = async (e) => {
     const files = [...e.target.files]; e.target.value = '';
     if (!files.length) return;
-    const btn = $('#up'); btn.disabled = true;
+    const btn = $('#up'); btn.disabled = true; btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
     let n = 0;
     try {
       for (const [i, f] of files.entries()) {
@@ -318,71 +366,34 @@ async function viewCetak(qs) {
 
   const remaining = orders.filter((o) => !session.printed.has(o.id));
   const logos = await logoSet(shop);
-  const g = paper(shop), used = usedMM(shop), pend = session.pending;
-  const plan = pend || layout(remaining, used, shop);
+  // Setiap cetak selalu di kertas baru, mulai dari atas.
+  const pend = session.pending;
+  const plan = pend || layout(remaining, 0, shop);
   const posOf = new Map(plan.orders.map((o, i) => [o.id, plan.ys[i]]));
-  const who = (o) => (o.type.startsWith('shopee') ? o.resi || 'Shopee' : o.name);
-  const left = g.cap - used;
-
-  // Gambar kolom kertas: bagian terpakai, label yang akan dicetak, dan sisa kosong (skala tinggi).
-  const pct = (mm) => `${(mm / g.cap) * 100}%`;
-  const colmap = `<div class="colmap">
-    ${used ? `<div class="seg used" style="top:0;height:${pct(used)}"><span>Terpakai ${cm(used)} cm</span></div>` : ''}
-    ${plan.orders.map((o, i) => `<div class="seg print" style="top:${pct(plan.ys[i])};height:${pct(labelH(o))}"><span class="ell">${esc(who(o))}</span></div>`).join('')}
-  </div>`;
 
   let status = '';
   if (pend) {
     status = `<div class="card"><b>Sudah tercetak dengan benar?</b>
-      <div class="muted">${pend.orders.length} label. Posisi kertas baru dicatat setelah kamu konfirmasi.</div>
+      <div class="muted">${pend.orders.length} label ditandai “Dicetak” setelah kamu konfirmasi.</div>
       <div class="row" style="margin-top:10px"><button class="btn grow" id="confirm">Ya, tandai tercetak</button><button class="btn ghost" id="redo">Belum</button></div></div>`;
   } else if (!remaining.length) {
     status = `<div class="banner ok">Semua label sudah dicetak.</div>`;
-  } else if (!plan.orders.length) {
-    status = `<div class="banner">Sisa kertas (${cm(left)} cm) tidak cukup untuk label berikutnya. Ganti dengan stiker baru, lalu tekan “Kertas baru”.</div>`;
-  } else if (session.printed.size && used === 0) {
+  } else if (session.printed.size) {
     status = `<div class="banner">Kertas sebelumnya sudah penuh. Pasang stiker baru, lalu tekan “Lanjut cetak”. Sisa ${remaining.length} label.</div>`;
   }
 
   frame('Cetak', `${status}
-    <details class="slotbox" ${session.showMap ? 'open' : ''}>
-      <summary><span>${ic('printer', 18)}</span><span class="grow"><b>${used ? `Mulai dari ${cm(used)} cm` : 'Kertas baru, mulai dari atas'}</b><br><span class="muted">Sisa ${cm(left)} dari ${cm(g.cap)} cm di kolom tengah</span></span><span class="btn ghost sm">Ubah</span></summary>
-      <div class="row" style="margin-top:14px;align-items:flex-start;gap:16px">
-        ${colmap}
-        <div class="grow">
-          <div class="muted">Bagian kolom yang sudah terpakai (dari atas):</div>
-          <div class="stepper" style="margin-top:8px"><button class="btn alt" data-u="-5" aria-label="Kurangi">−</button><b>${cm(used)} cm</b><button class="btn alt" data-u="5" aria-label="Tambah">+</button></div>
-          <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">${[0, 50, 100, 150, 200, 250].filter((v) => v < g.cap).map((v) => `<button class="btn ghost sm" data-uset="${v}">${cm(v)}</button>`).join('')}</div>
-          <div class="muted" style="margin-top:10px">Ukur dari tepi atas stiker sampai bekas potongan terakhir, atau pilih kelipatan 5 cm.</div>
-        </div>
-      </div>
-    </details>
     <h2>Pratinjau (${orders.length} label)</h2>
-    <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${posOf.has(o.id) ? `Mulai ${cm(posOf.get(o.id))} cm dari atas` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
+    <div class="preview" id="prev">${orders.map((o, i) => `<div class="pv"><span class="pv-cap">Label ${i + 1}${posOf.has(o.id) ? '' : session.printed.has(o.id) ? ' · sudah dicetak' : ' · kertas berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
     ${plan.orders.length && !pend ? `<div class="card" style="margin-top:12px">${plan.orders.length} label dicetak di kertas ini${remaining.length > plan.orders.length ? `, sisa ${remaining.length - plan.orders.length} di kertas berikutnya` : ''}.</div>
-    ${used ? `<div class="banner" style="margin-top:4px">Kertas ini sudah terpakai ${cm(used)} cm, jadi label akan mulai dari tengah. Kalau kamu memasang <b>kertas baru</b>, pilih “Kertas baru”.</div>
-    <div class="row"><button class="btn grow" id="printnew">${ic('printer', 18)} Kertas baru (dari atas)</button><button class="btn ghost grow" id="print">Lanjut di sisa kertas</button></div>`
-    : `<button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>`}
-    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>`
-    : remaining.length && !pend ? `<button class="btn block" id="printnew">${ic('printer', 20)} Kertas baru, cetak dari atas</button>` : ''}
-    <button class="btn ghost block" id="newsheet">Kertas baru, mulai dari atas</button>
+    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>
+    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
     <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
   const warn = $$('#prev .label.wahana, #prev .label.shopee').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
 
-  const setUsed = async (v) => { await saveShop({ used: Math.max(0, Math.min(g.cap, v)) }); session.pending = null; session.showMap = true; viewCetak(qs); };
-  $('.slotbox').ontoggle = (e) => { session.showMap = e.target.open; };
-  $$('[data-u]').forEach((b) => b.onclick = () => setUsed(used + Number(b.dataset.u)));
-  $$('[data-uset]').forEach((b) => b.onclick = () => setUsed(Number(b.dataset.uset)));
-  $('#newsheet').onclick = async () => { await saveShop({ used: 0 }); session.pending = null; session.showMap = false; viewCetak(qs); toast('Kertas baru, mulai dari atas.'); };
-  $('#printnew')?.addEventListener('click', async () => {
-    await saveShop({ used: 0 });
-    const fresh = layout(remaining, 0, shop);
-    await printHTML(await sheetsHTML([fresh], shop));
-    session.pending = fresh; viewCetak(qs);
-  });
   $('#print')?.addEventListener('click', async () => {
     const bad = await printHTML(await sheetsHTML([plan], shop));
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
@@ -398,8 +409,6 @@ async function viewCetak(qs) {
   $('#redo')?.addEventListener('click', () => { session.pending = null; viewCetak(qs); });
   $('#confirm')?.addEventListener('click', async () => {
     for (const o of pend.orders) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
-    // Sisa kurang dari 2 cm dianggap habis.
-    await saveShop({ used: g.cap - pend.end < 20 ? 0 : pend.end });
     session.pending = null; viewCetak(qs);
   });
 }
