@@ -126,10 +126,11 @@ async function viewBaru() {
   const wahana = `
     ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
       <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
-    <label class="f" for="chat">Tempel chat WhatsApp</label>
-    <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
-    <div class="row" style="margin-top:8px"><button class="btn ghost grow" id="shot">${ic('camera', 18)} Dari screenshot</button><button class="btn alt grow" id="tidy">Rapikan</button></div>
+    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat</button>
     <input type="file" id="shotf" accept="image/*" hidden>
+    <label class="f" for="chat">Atau tempel teks chat WhatsApp</label>
+    <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
+    <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
     <h2>Periksa & koreksi</h2>
     <label class="f" for="name">Nama penerima</label><input type="text" id="name" value="${esc(d.name)}" autocomplete="off">
     <label class="f" for="phone">No. HP</label><input type="tel" id="phone" value="${esc(d.phone)}" inputmode="tel">
@@ -145,7 +146,7 @@ async function viewBaru() {
   const shopee = `
     <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
     <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
-    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Ambil resi dari screenshot</button>
+    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload screenshot resi</button>
     <input type="file" id="shotf" accept="image/*" multiple hidden>
     <div id="resisum"></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
@@ -431,5 +432,10 @@ async function render() {
   shop = await db.getShop();
   window.addEventListener('hashchange', render);
   render();
-  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    // Versi baru terpasang -> muat ulang sekali supaya HP tidak memakai file lama.
+    const had = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (had) location.reload(); });
+    navigator.serviceWorker.register('sw.js').then((r) => r.update()).catch(() => {});
+  }
 })();
