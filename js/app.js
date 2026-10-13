@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { parseChat, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
+import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
 import { readImage } from './ocr.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
@@ -169,9 +169,13 @@ async function viewBaru() {
       ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
     });
     ocrButton(async (files) => {
-      const t = cleanOcr((await ocrAll(files)).join('\n'));
+      const raw = (await ocrAll(files)).join('\n'), t = cleanOcr(raw);
       if (!t) return toast('Tidak ada teks terbaca.');
-      d.chat = t; $('#chat').value = t; $('#tidy').click();
+      d.chat = t; $('#chat').value = t;
+      Object.assign(d, parseChatOcr(raw));
+      ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
+      toast(d.phone ? 'Sudah dibaca. Periksa dulu ya.' : 'Sudah dibaca. No. HP tidak ada di screenshot, isi manual ya.');
+      $('#name').scrollIntoView({ behavior: 'smooth', block: 'center' });
     });
     $('#tidy').onclick = () => {
       const r = parseChat(d.chat);
