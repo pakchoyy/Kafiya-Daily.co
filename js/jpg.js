@@ -1,4 +1,4 @@
-// Gambar lembar A4 (300 dpi) berisi label di slotnya, lalu unduh sebagai JPG.
+// Gambar satu lembar kertas (300 dpi) berisi label di posisinya, lalu unduh sebagai JPG.
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';

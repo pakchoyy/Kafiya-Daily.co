@@ -8,11 +8,11 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 23; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 24; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
-let draft = { items: [], manualOpen: false, chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
+let draft = { items: [], manualOpen: false, chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', save: true };
 let session = null; // { ids, printed:Set, pending:[orders]|null }
 
 const $ = (s, r = app) => r.querySelector(s);
@@ -54,15 +54,14 @@ function editOrder(o, onDone) {
     ${w ? `<label class="f">Nama penerima</label><input type="text" id="en" value="${esc(o.name)}">
     <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
-    <div class="row"><div class="grow"><label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}"></div>
-    <div style="width:110px"><label class="f">Berat (kg)</label><input type="number" id="ew" step="0.1" value="${esc(o.weight)}"></div></div>` : ''}
+    <label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}">` : ''}
     <label class="f">No. resi${w ? ' (catatan)' : ''}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
     $('#es', m).onclick = async () => {
       const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
-      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', weight: $('#ew', m).value.trim() });
+      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana' });
       if (w ? !v.name || !v.address : !v.resi) return toast(w ? 'Nama dan alamat wajib diisi.' : 'No. resi wajib diisi.');
       await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
     };
@@ -324,7 +323,7 @@ async function viewBaru() {
   });
   $$('[data-rm]').forEach((b) => b.onclick = () => { items.splice(Number(b.dataset.rm), 1); viewBaru(); });
   $('#save')?.addEventListener('change', (e) => { d.save = e.target.checked; });
-  $('#go')?.addEventListener('click', () => saveItems(true));
+  $('#go')?.addEventListener('click', saveItems);
 
   // upload otomatis
   $('#up').onclick = () => $('#upf').click();
@@ -448,7 +447,7 @@ function dupeChecker(existing, items) {
   return fn;
 }
 
-async function saveItems(print) {
+async function saveItems() {
   const items = draft.items;
   if (!items.length) return toast('Belum ada pesanan.');
   const dn = dupeChecker(await db.all('orders'), items).count();
@@ -462,22 +461,14 @@ async function saveItems(print) {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', weight: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });
     }
   }
   draft.items = [];
-  afterSave(ids, print);
-}
-
-// Setelah simpan: langsung ke cetak, atau tetap di form untuk menambah pesanan lagi.
-async function afterSave(ids, print) {
-  if (print) { location.hash = `#/cetak?ids=${ids.join(',')}`; return; }
-  const waiting = (await db.all('orders')).filter((o) => !o.printed).length;
-  toast(`${ids.length > 1 ? `${ids.length} pesanan` : 'Pesanan'} disimpan. ${waiting} label menunggu di tab Cetak.`);
-  await viewBaru(); window.scrollTo(0, 0);
+  location.hash = `#/cetak?ids=${ids.join(',')}`;
 }
 
 // ---------- Cetak ----------
@@ -541,7 +532,7 @@ function paginate(orders) {
   const pages = [];
   let rest = orders;
   while (rest.length) {
-    const pg = layout(rest, 0, shop);
+    const pg = layout(rest, shop);
     if (!pg.orders.length) { pg.orders = [rest[0]]; pg.ys = [0]; } // label lebih tinggi dari kertas: tetap cetak sendiri
     pages.push(pg); rest = rest.slice(pg.orders.length);
   }
@@ -587,7 +578,7 @@ async function viewPelanggan() {
       <button class="btn danger block" id="cd">Hapus pelanggan</button>`, (o, close) => {
       const read = () => ({ ...c, name: $('#cn', o).value.trim(), phone: normalizePhone($('#cp', o).value) || $('#cp', o).value.trim(), address: $('#ca', o).value.trim() });
       $('#cs', o).onclick = async () => { const v = read(); if (!v.name) return toast('Nama wajib diisi.'); await db.put('customers', v); close(); viewPelanggan(); };
-      $('#co', o).onclick = () => { const v = read(); Object.assign(draft, { mode: 'wahana', name: v.name, phone: v.phone, address: v.address }); close(); location.hash = '#/baru'; };
+      $('#co', o).onclick = () => { const v = read(); draft.items.push({ kind: 'wahana', name: v.name, phone: v.phone, address: v.address, courier: 'Wahana' }); close(); location.hash = '#/baru'; toast('Ditambahkan ke daftar pesanan.'); };
       $('#cd', o).onclick = async () => { if (await ask('Hapus pelanggan ini?', 'Label pesanan lama tidak berubah.', { ok: 'Hapus', danger: true })) { await db.del('customers', c.id); close(); viewPelanggan(); } };
     });
   });

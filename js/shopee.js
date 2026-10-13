@@ -32,7 +32,7 @@ async function readQR(c) {
   }
   return '';
 }
-export const IMG_PAD = 1; // mm ruang putih di sekeliling gambar label
+const IMG_PAD = 1; // mm ruang putih di sekeliling gambar label
 
 let pdfLoading;
 function loadPdfJs() {
@@ -72,7 +72,7 @@ async function toCanvases(file) {
 
 // Cari kotak label: area kertas putih dulu (screenshot bisa berlatar gelap), lalu garis tepi tegak
 // yang panjang di kiri dan kanan. Kalau tidak ketemu, pakai batas tinta di area kertas.
-export function findLabelBox(gray, W, H) {
+function findLabelBox(gray, W, H) {
   const g = (x, y) => gray[y * W + x];
   // Rentang true terpanjang; celah pendek (garis tepi label yang gelap) tidak memutus rentang.
   const longestRun = (arr, gap = 12) => {
@@ -146,7 +146,7 @@ function labelItem(page, resi) {
 }
 
 // Kembalikan [{ kind:'shopee', img, h, resi }] untuk tiap label di file. h = tinggi label (mm) pada lebar 7 cm.
-export async function readShopeeLabels(file, onStep) {
+async function readShopeeLabels(file, onStep) {
   const out = [];
   for (const page of await toCanvases(file)) {
     onStep?.('Membaca resi…');

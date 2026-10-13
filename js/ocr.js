@@ -15,7 +15,7 @@ function loadLib() {
 }
 
 // Siapkan gambar: teks berwarna (mis. resi merah) dan mode gelap jadi teks gelap di latar putih.
-export async function prepare(file) {
+async function prepare(file) {
   const bmp = await createImageBitmap(file);
   const sc = Math.min(3, Math.max(1, 2400 / bmp.width));
   const w = Math.round(bmp.width * sc), h = Math.round(bmp.height * sc);
