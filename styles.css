@@ -95,6 +95,11 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 
 .preview { display: grid; justify-content: center; padding: 18px 0; gap: 12px; background: var(--paper); margin: 0 -18px; }
 .preview .label { background: #fff; box-shadow: 0 6px 20px rgba(62,54,48,.08); border: 1px solid var(--line); }
+.slotbox { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; margin-bottom: 8px; }
+.slotbox summary { display: flex; align-items: center; gap: 12px; cursor: pointer; list-style: none; }
+.slotbox summary::-webkit-details-marker { display: none; }
+.slotbox summary > span:first-child { color: var(--sand-d); }
+.slotbox[open] summary .btn { visibility: hidden; }
 .sheetmap { max-width: 300px; margin: 0 auto; background: #fff; border: 1px solid var(--line); padding: 8px; display: grid; gap: 4px; box-shadow: 0 6px 20px rgba(62,54,48,.06); }
 .srow { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border: 1px dashed var(--line); background: transparent; text-align: left; font-size: 13px; color: var(--muted); }
 .srow b { font-size: 16px; width: 18px; color: var(--text); }
