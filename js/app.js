@@ -1,13 +1,13 @@
 import * as db from './db.js';
 import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
-import { readImage } from './ocr.js';
+import { readImage, readBarcodes } from './ocr.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, slotsFor, PAPERS } from './label.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 16; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 17; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -187,8 +187,8 @@ async function viewBaru() {
   const wahana = `
     ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
       <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
-    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat</button>
-    <input type="file" id="shotf" accept="image/*" hidden>
+    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat (bisa banyak)</button>
+    <input type="file" id="shotf" accept="image/*" multiple hidden>
     <label class="f" for="chat">Atau tempel teks chat WhatsApp</label>
     <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
     <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
@@ -207,7 +207,7 @@ async function viewBaru() {
   const shopee = `
     <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
     <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
-    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload screenshot resi</button>
+    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload screenshot / foto label (bisa banyak)</button>
     <input type="file" id="shotf" accept="image/*" multiple hidden>
     <div id="resisum"></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
@@ -229,6 +229,7 @@ async function viewBaru() {
       ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
     });
     ocrButton(async (files) => {
+      if (files.length > 1) return batchWahana(await ocrAll(files));
       const raw = (await ocrAll(files)).join('\n'), t = cleanOcr(raw);
       if (!t) return toast('Tidak ada teks terbaca.');
       d.chat = t; $('#chat').value = t;
@@ -257,7 +258,14 @@ async function viewBaru() {
     };
     bind('resilist', 'resiList', sum); sum();
     ocrButton(async (files) => {
-      const found = extractResi((await ocrAll(files)).join('\n'));
+      // Per gambar: coba baca barcode dulu (akurat), kalau tidak ada baru OCR.
+      const found = [];
+      for (const [i, f] of files.entries()) {
+        $('#shot').textContent = `Membaca ${i + 1}/${files.length}…`;
+        let got = extractResi((await readBarcodes(f)).join('\n'));
+        if (!got.length) got = extractResi((await ocrAll([f])).join('\n'));
+        got.forEach((r) => { if (!found.includes(r)) found.push(r); });
+      }
       if (!found.length) return toast('Tidak ada nomor resi terbaca.');
       d.resiList = [d.resiList.trim(), ...found].filter(Boolean).join('\n');
       $('#resilist').value = d.resiList; sum();
@@ -286,6 +294,41 @@ async function ocrAll(files) {
     texts.push(await readImage(f, (p) => { btn.textContent = `Membaca${files.length > 1 ? ` ${i + 1}/${files.length}` : ''}… ${p}%`; }));
   }
   return texts;
+}
+
+// Banyak screenshot chat sekaligus: satu gambar = satu pesanan. Tampilkan semua untuk dicek, lalu simpan sekaligus.
+function batchWahana(texts) {
+  const d = draft;
+  const rows = texts.map((t) => parseChatOcr(t));
+  const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
+  modal(`<h2>${rows.length} screenshot dibaca</h2>
+    <p class="muted" style="margin-top:-4px">Periksa tiap pesanan. Ekspedisi: <b>${esc(courier)}</b>.</p>
+    ${rows.map((r, i) => `<div class="card batch" data-i="${i}">
+      <div class="row spread"><b>Pesanan ${i + 1}</b><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+      <label class="f">Nama penerima</label><input type="text" data-k="name" value="${esc(r.name)}">
+      <label class="f">No. HP</label><input type="tel" data-k="phone" value="${esc(r.phone)}">
+      <label class="f">Alamat</label><textarea data-k="address" style="min-height:80px">${esc(r.address)}</textarea>
+    </div>`).join('')}
+    <button class="btn block" id="bsave">${ic('printer', 20)} Simpan semua & cetak</button>`, (m, close) => {
+    m.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => b.closest('.batch').remove());
+    $('#bsave', m).onclick = async () => {
+      const list = [...m.querySelectorAll('.batch')].map((c) => Object.fromEntries([...c.querySelectorAll('[data-k]')].map((el) => [el.dataset.k, el.value.trim()])));
+      if (!list.length) return close();
+      const bad = list.findIndex((r) => !r.name || !r.address);
+      if (bad >= 0) return toast(`Pesanan ${bad + 1}: nama dan alamat wajib diisi.`);
+      const ids = [], cs = await db.all('customers');
+      for (const r of list) {
+        const phone = normalizePhone(r.phone) || r.phone;
+        ids.push(await db.put('orders', { type: 'wahana', name: r.name, phone, address: r.address, courier, resi: '', weight: '', createdAt: new Date().toISOString(), printed: false }));
+        if (d.save) {
+          const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === r.name));
+          await db.put('customers', { ...(hit || {}), name: r.name, phone, address: r.address });
+        }
+      }
+      close(); toast(`${ids.length} pesanan disimpan.`);
+      location.hash = `#/cetak?ids=${ids.join(',')}`;
+    };
+  });
 }
 
 function slotText(n) {

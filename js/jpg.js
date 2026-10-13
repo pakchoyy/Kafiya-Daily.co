@@ -1,6 +1,7 @@
 // Gambar lembar A4 (300 dpi) berisi label di slotnya, lalu unduh sebagai JPG.
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
+import { drawBarcode } from './barcode.js';
 import { LABEL_W, LABEL_H, slotTop, paper, cutLines, THANKS, fromLine } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
@@ -41,19 +42,20 @@ function drawFoot(ctx, y, W, P) {
 }
 
 function drawLabel(ctx, o, shop, img) {
-  const P = 2.5, W = LABEL_W - 2 * P;
+  const P = 4.5, W = LABEL_W - 2 * P; // sisi kiri-kanan; atas-bawah tetap 2.5
   ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 0.3; ctx.textBaseline = 'alphabetic';
   if (o.type === 'shopee') {
-    drawImgFit(ctx, img.full, P, 4, W, 15, true);
-    fitLine(ctx, o.resi, LABEL_W / 2, 28.5, W, 20, 8, true, 'center');
-    drawFoot(ctx, 33, W, P);
+    drawImgFit(ctx, img.full, P, 3, W, 11, true);
+    drawBarcode(ctx, o.resi, (LABEL_W - 52) / 2, 16, 52, 11);
+    fitLine(ctx, o.resi, LABEL_W / 2, 34, W, 17, 8, true, 'center');
+    drawFoot(ctx, 37, W, P);
     return;
   }
   // kepala: logo + nama toko, ekspedisi di kanan, garis bawah
-  const lw = drawImgFit(ctx, img.mark, P, P, 14, 8.5, false);
+  const lw = drawImgFit(ctx, img.mark, P, 2.5, 14, 8.5, false);
   font(ctx, 11, true); ctx.textAlign = 'right'; const courier = (o.courier || 'Wahana').toUpperCase();
-  ctx.fillText(courier, LABEL_W - P, P + 6); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
-  fitLine(ctx, shop.name || '', P + lw + 1.5, P + 5.5, W - lw - cw - 4, 8, 6, true);
+  ctx.fillText(courier, LABEL_W - P, 8.5); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
+  fitLine(ctx, shop.name || '', P + lw + 1.5, 8, W - lw - cw - 4, 8, 6, true);
   ctx.beginPath(); ctx.moveTo(P, 12); ctx.lineTo(LABEL_W - P, 12); ctx.stroke();
   // Dari / Untuk
   font(ctx, 8, true); ctx.fillText('Dari :', P, 16); const dw = ctx.measureText('Dari : ').width;
