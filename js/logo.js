@@ -47,4 +47,11 @@ export async function toBW(dataUrl) {
   return out;
 }
 
-export const logoSrc = async (shop) => (!shop.logo ? null : shop.bw ? toBW(shop.logo) : shop.logo);
+// Logo bawaan Kafiya Daily dipakai kalau pemilik belum mengunggah logo sendiri.
+export const DEFAULT_LOGOS = { mark: 'assets/logo-mark.png', full: 'assets/logo-full.png' };
+
+export async function logoSet(shop) {
+  const pick = async (src) => (shop.bw ? toBW(src) : src);
+  if (shop.logo) { const l = await pick(shop.logo); return { mark: l, full: l }; }
+  return { mark: await pick(DEFAULT_LOGOS.mark), full: await pick(DEFAULT_LOGOS.full) };
+}

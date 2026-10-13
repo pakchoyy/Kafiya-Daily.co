@@ -1,5 +1,5 @@
 // Pembuat label 7 × 5 cm dan lembar A4 (kolom tengah, slot 1–5 dari atas).
-import { logoSrc } from './logo.js';
+import { logoSet } from './logo.js';
 
 export const LABEL_W = 70, LABEL_H = 50, SLOTS = 5;
 export const COL_X = 70;                                   // kolom tengah dimulai di 7 cm
@@ -11,19 +11,16 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 const courierName = (o) => (o.courier || 'Wahana').toUpperCase();
 
-export function labelHTML(order, shop, logo) {
-  const logoEl = logo
-    ? `<img class="lb-logo" src="${logo}" alt="">`
-    : `<span class="lb-logo-txt">${esc(shop.name || 'Kafiya Daily')}</span>`;
+export function labelHTML(order, shop, logos) {
   if (order.type === 'shopee') {
     return `<div class="label shopee">
-      <div class="lb-logo-wrap">${logoEl}</div>
+      <div class="lb-logo-wrap"><img class="lb-logo" src="${logos.full}" alt=""></div>
       <div class="lb-resi" data-max="20">${esc(order.resi)}</div>
     </div>`;
   }
   const w = order.weight ? `${esc(order.weight)} kg` : '';
   return `<div class="label wahana">
-    <div class="lb-head">${logoEl}<span class="lb-exp">${esc(courierName(order))}</span></div>
+    <div class="lb-head"><span class="lb-id"><img class="lb-logo" src="${logos.mark}" alt=""><span class="lb-name">${esc(shop.name)}</span></span><span class="lb-exp">${esc(courierName(order))}</span></div>
     <div class="lb-resi" data-max="15">${esc(order.resi)}</div>
     <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
@@ -53,9 +50,9 @@ export function fitLabel(el) {
 
 // chunks: [{ slots:[n..], orders:[...] }] -> satu .sheet A4 per chunk
 export async function sheetsHTML(chunks, shop) {
-  const logo = await logoSrc(shop);
+  const logos = await logoSet(shop);
   return chunks.map((ch) => `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm">${
-    ch.orders.map((o, i) => `<div class="slot" style="top:${slotTop(ch.slots[i])}mm">${labelHTML(o, shop, logo)}</div>`).join('')
+    ch.orders.map((o, i) => `<div class="slot" style="top:${slotTop(ch.slots[i])}mm">${labelHTML(o, shop, logos)}</div>`).join('')
   }</section>`).join('');
 }
 
@@ -66,9 +63,11 @@ export function testSheetHTML(shop) {
 }
 
 // Cetak lewat #print-root; fitLabel dijalankan saat elemen sudah ada di DOM (di luar layar).
-export function printHTML(html) {
+export async function printHTML(html) {
   const root = document.getElementById('print-root');
   root.innerHTML = html;
+  // Tunggu logo selesai dimuat, kalau tidak bisa hilang dari hasil cetak.
+  await Promise.all([...root.querySelectorAll('img')].map((i) => i.decode().catch(() => {})));
   const bad = [...root.querySelectorAll('.label.wahana, .label.shopee')].filter((l) => !fitLabel(l)).length;
   window.print();
   return bad;

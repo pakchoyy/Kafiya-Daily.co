@@ -1,5 +1,5 @@
-const CACHE = 'kafiya-v1';
-const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'icons/icon.svg',
+const CACHE = 'kafiya-v2';
+const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'assets/logo-mark.png', 'assets/logo-full.png', 'icons/icon-192.png',
   'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js'];
 
 self.addEventListener('install', (e) => {

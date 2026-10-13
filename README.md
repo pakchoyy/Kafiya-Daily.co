@@ -42,5 +42,5 @@ Geser kiri/kanan dan atas/bawah (±20 mm, per 1 mm) disimpan di Pengaturan. Di d
 
 ## Belum ada / perlu dijawab (lihat PRD)
 
-Logo asli (saat ini teks nama toko jika logo belum diunggah), no. HP toko, ekspedisi lain, hasil uji di
+No. HP toko, ekspedisi lain, hasil uji di
 printer WiFi sebenarnya, contoh resi asli, dan konfirmasi ukuran label final.
