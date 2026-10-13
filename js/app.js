@@ -65,13 +65,18 @@ function bindInstall() {
   if (b) b.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; render(); };
 }
 
+const EYEBROW = { Pesanan: 'Kafiya Daily', 'Pesanan baru': 'Buat label', Cetak: 'Stiker A4 · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
+
 function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}) {
-  const logo = `<img src="${esc(shop.logo || DEFAULT_LOGOS.mark)}" alt="">`;
-  app.innerHTML = `${hero ? '' : `<header class="top">${back ? `<a class="back" href="#/" aria-label="Kembali">${ic('back', 24)}</a>` : logo}<h1>${esc(title)}</h1></header>`}
-  <main class="${hero ? 'hero-main' : ''}">${body}</main>
+  app.innerHTML = `<header class="top">
+    ${back ? `<a class="hbtn" href="#/" aria-label="Kembali">${ic('back', 22)}</a>` : '<span class="hbtn"></span>'}
+    <img class="brand" src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}">
+    <a class="hbtn" href="#/baru" aria-label="Pesanan baru">${ic('plus', 22)}</a>
+  </header>
+  <main>${hero ? '' : `<p class="eyebrow">${esc(EYEBROW[title] || '')}</p><h1 class="display">${esc(title)}</h1>`}${body}</main>
   <nav class="bottom">
     ${[['pesanan', '', 'list', 'Pesanan'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Pengaturan']]
-      .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i)}<span>${l}</span></a>`).join('')}
+      .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
   </nav>`;
   bindInstall();
 }
@@ -85,17 +90,19 @@ async function viewPesanan() {
   const todo = orders.filter((o) => !o.printed).length;
   const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
   frame('Pesanan', `<section class="hero">
-      <img class="hero-logo" src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}">
-      <div class="stats">
-        <div><b>${todo}</b><span>belum dicetak</span></div>
-        <div><b>${today}</b><span>hari ini</span></div>
-        <div><b>${shop.nextSlot}</b><span>slot berikutnya</span></div>
-      </div>
+      <p class="eyebrow light">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <h1 class="display xl">Teman Outfit<br>Harianmu.</h1>
+      <p class="eyebrow light">Cetak resi rapi, tanpa tulis tangan</p>
+      <a class="btn sand" href="#/baru">Pesanan baru ${ic('chev', 16)}</a>
     </section>
+    <div class="stats">
+      <div><b>${todo}</b><span>Belum dicetak</span></div>
+      <div><b>${today}</b><span>Hari ini</span></div>
+      <div><b>0${shop.nextSlot}<small>/05</small></b><span>Slot berikutnya</span></div>
+    </div>
     <div class="install-slot">${installCard()}</div>
     ${remind}
-    <a class="btn block big" href="#/baru">${ic('plus')} Pesanan baru</a>
-    <h2>Riwayat</h2>
+    <h2>Riwayat pesanan</h2>
     ${orders.length ? orders.map((o) => `<div class="item">
       <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
