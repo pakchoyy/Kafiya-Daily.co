@@ -1,5 +1,6 @@
 import * as db from './db.js';
-import { parseChat, parseResiList, normalizePhone } from './parser.js';
+import { parseChat, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
+import { readImage } from './ocr.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS } from './label.js';
 
@@ -44,6 +45,7 @@ const ICON = {
   printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   chev: '<path d="M9 18l6-6-6-6"/>',
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
 
@@ -126,7 +128,8 @@ async function viewBaru() {
       <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
     <label class="f" for="chat">Tempel chat WhatsApp</label>
     <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
-    <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
+    <div class="row" style="margin-top:8px"><button class="btn ghost grow" id="shot">${ic('camera', 18)} Dari screenshot</button><button class="btn alt grow" id="tidy">Rapikan</button></div>
+    <input type="file" id="shotf" accept="image/*" hidden>
     <h2>Periksa & koreksi</h2>
     <label class="f" for="name">Nama penerima</label><input type="text" id="name" value="${esc(d.name)}" autocomplete="off">
     <label class="f" for="phone">No. HP</label><input type="tel" id="phone" value="${esc(d.phone)}" inputmode="tel">
@@ -142,6 +145,8 @@ async function viewBaru() {
   const shopee = `
     <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
     <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
+    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Ambil resi dari screenshot</button>
+    <input type="file" id="shotf" accept="image/*" multiple hidden>
     <div id="resisum"></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
   frame('Pesanan baru', `<div class="tabs"><button data-m="wahana" class="${d.mode === 'wahana' ? 'on' : ''}">Wahana</button><button data-m="shopee" class="${d.mode === 'shopee' ? 'on' : ''}">Shopee</button></div>
@@ -160,6 +165,11 @@ async function viewBaru() {
       if (!c) return;
       Object.assign(d, { name: c.name, phone: c.phone, address: c.address });
       ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
+    });
+    ocrButton(async (files) => {
+      const t = cleanOcr((await ocrAll(files)).join('\n'));
+      if (!t) return toast('Tidak ada teks terbaca.');
+      d.chat = t; $('#chat').value = t; $('#tidy').click();
     });
     $('#tidy').onclick = () => {
       const r = parseChat(d.chat);
@@ -180,8 +190,36 @@ async function viewBaru() {
         <div class="muted" style="margin-top:8px;font-variant-numeric:tabular-nums">${items.map((i, n) => `${n + 1}. ${esc(i.resi)}${i.dup ? ' (dobel)' : ''}`).join('<br>')}</div></div>` : '';
     };
     bind('resilist', 'resiList', sum); sum();
+    ocrButton(async (files) => {
+      const found = extractResi((await ocrAll(files)).join('\n'));
+      if (!found.length) return toast('Tidak ada nomor resi terbaca.');
+      d.resiList = [d.resiList.trim(), ...found].filter(Boolean).join('\n');
+      $('#resilist').value = d.resiList; sum();
+      toast(`${found.length} resi ditambahkan. Periksa dulu ya.`);
+    });
     $('#go').onclick = saveShopee;
   }
+}
+
+// Tombol "screenshot": pilih gambar, OCR di HP, lalu serahkan teksnya ke handler.
+function ocrButton(handle) {
+  const btn = $('#shot'), input = $('#shotf'), label = btn.innerHTML;
+  btn.onclick = () => input.click();
+  input.onchange = async () => {
+    const files = [...input.files]; input.value = '';
+    if (!files.length) return;
+    btn.disabled = true;
+    try { await handle(files, btn); }
+    catch (e) { toast(e.message || 'Gagal membaca gambar.'); }
+    finally { btn.disabled = false; btn.innerHTML = label; }
+  };
+}
+async function ocrAll(files) {
+  const btn = $('#shot'), texts = [];
+  for (const [i, f] of files.entries()) {
+    texts.push(await readImage(f, (p) => { btn.textContent = `Membaca${files.length > 1 ? ` ${i + 1}/${files.length}` : ''}… ${p}%`; }));
+  }
+  return texts;
 }
 
 function slotText(n) {

@@ -1,6 +1,6 @@
-const CACHE = 'kafiya-v5';
+const CACHE = 'kafiya-v6';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'assets/logo-mark.png', 'assets/logo-full.png', 'icons/icon-192.png',
-  'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js'];
+  'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js', 'js/ocr.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
