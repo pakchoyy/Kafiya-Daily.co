@@ -95,6 +95,14 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 
 .preview { display: grid; justify-content: center; padding: 18px 0; gap: 12px; background: var(--paper); margin: 0 -18px; }
 .preview .label { background: #fff; box-shadow: 0 6px 20px rgba(62,54,48,.08); border: 1px solid var(--line); }
+.sheetmap { max-width: 300px; margin: 0 auto; background: #fff; border: 1px solid var(--line); padding: 8px; display: grid; gap: 4px; box-shadow: 0 6px 20px rgba(62,54,48,.06); }
+.srow { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border: 1px dashed var(--line); background: transparent; text-align: left; font-size: 13px; color: var(--muted); }
+.srow b { font-size: 16px; width: 18px; color: var(--text); }
+.srow.used { background: repeating-linear-gradient(135deg, #F1EDE8 0 6px, #E9E3DC 6px 12px); border-style: solid; text-decoration: line-through; }
+.srow.used b { color: var(--muted); }
+.srow.print { background: #F5EDE7; border: 1.5px solid var(--sand); color: var(--text); font-weight: 500; }
+.pv { display: grid; gap: 4px; justify-items: center; }
+.pv-cap { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .stepper { display: flex; align-items: center; gap: 8px; }
 .stepper b { min-width: 64px; text-align: center; }
 .stepper .btn { padding: 0; width: 46px; font-size: 18px; }

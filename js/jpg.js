@@ -83,7 +83,7 @@ export async function sheetJPG(chunk, shop) {
   ctx.scale(K, K);
   if (shop.cutLines !== false) {
     ctx.save(); ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 0.2; ctx.setLineDash([1.5, 1]);
-    for (const l of cutLines(shop)) { ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); }
+    for (const l of cutLines(shop, chunk.slots)) { ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); }
     ctx.restore();
   }
   chunk.orders.forEach((o, i) => {

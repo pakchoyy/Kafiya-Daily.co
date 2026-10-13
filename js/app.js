@@ -3,11 +3,11 @@ import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extra
 import { readImage } from './ocr.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
-import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS, PAPERS } from './label.js';
+import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, slotsFor, PAPERS } from './label.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 14; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 15; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -289,8 +289,8 @@ async function ocrAll(files) {
 }
 
 function slotText(n) {
-  const free = SLOTS - shop.nextSlot + 1;
-  const sheets = n <= free ? 1 : 1 + Math.ceil((n - free) / SLOTS);
+  const N = slotsFor(shop), free = N - Math.min(shop.nextSlot, N) + 1;
+  const sheets = n <= free ? 1 : 1 + Math.ceil((n - free) / N);
   return `mulai slot ${shop.nextSlot}, ${sheets} lembar`;
 }
 
@@ -329,15 +329,20 @@ async function viewCetak(qs) {
 
   const remaining = orders.filter((o) => !session.printed.has(o.id));
   const logos = await logoSet(shop);
-  const next = shop.nextSlot;
-  const free = SLOTS - next + 1;
-  const chunk = remaining.slice(0, free);
-  const slotBtns = Array.from({ length: SLOTS }, (_, i) => {
-    const n = i + 1, cls = n < next ? 'used' : n === next ? 'next' : '';
-    return `<button data-slot="${n}" class="${cls}">${n}<small>${n < next ? 'terpakai' : n === next ? 'berikutnya' : 'kosong'}</small></button>`;
+  const N = slotsFor(shop);
+  const next = shop.nextSlot > N ? 1 : shop.nextSlot;
+  const chunk = remaining.slice(0, N - next + 1);
+  const pend = session.pending;
+  // Peta kolom kertas: tiap baris = satu slot, dari atas ke bawah.
+  const plan = new Map((pend || chunk).map((o, i) => [next + i, o]));
+  const slotOf = new Map([...plan].map(([n, o]) => [o.id, n]));
+  const who = (o) => (o.type === 'shopee' ? o.resi : o.name);
+  const slotRows = Array.from({ length: N }, (_, i) => {
+    const n = i + 1, o = plan.get(n), st = n < next ? 'used' : o ? 'print' : 'free';
+    const txt = st === 'used' ? 'Sudah terpakai' : o ? `Dicetak: ${who(o)}` : 'Kosong, untuk cetak berikutnya';
+    return `<button data-slot="${n}" class="srow ${st}"><b>${n}</b><span class="ell">${esc(txt)}</span></button>`;
   }).join('');
 
-  const pend = session.pending;
   let status = '';
   if (pend) {
     status = `<div class="card"><b>Sudah tercetak dengan benar?</b>
@@ -350,13 +355,12 @@ async function viewCetak(qs) {
   }
 
   frame('Cetak', `${status}
-    <h2 style="margin-top:0">Pratinjau (${orders.length} label)</h2>
-    <div class="preview" id="prev">${orders.slice(0, 2).map((o) => labelHTML(o, shop, logos)).join('')}</div>
-    ${orders.length > 2 ? `<div class="muted" style="text-align:center">+ ${orders.length - 2} label lainnya</div>` : ''}
+    <h2 style="margin-top:0">Posisi di kertas (${N} slot per kolom)</h2>
+    <div class="sheetmap">${slotRows}</div>
+    <div class="muted" style="margin-top:8px;text-align:center">Slot = tempat label di kolom tengah kertas, dihitung dari atas.<br>Ketuk baris untuk memilih mulai dari slot mana.</div>
+    <h2>Pratinjau (${orders.length} label)</h2>
+    <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${slotOf.has(o.id) ? `Slot ${slotOf.get(o.id)}` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
-    <h2>Slot kertas</h2>
-    <div class="slots">${slotBtns}</div>
-    <div class="muted" style="margin-top:6px">Ketuk slot untuk mengganti slot berikutnya.</div>
     ${remaining.length && !pend ? `<div class="card" style="margin-top:12px">${chunk.length} label dicetak di lembar ini (slot ${next}–${next + chunk.length - 1})${remaining.length > chunk.length ? `, sisa ${remaining.length - chunk.length} di lembar berikutnya` : ''}.</div>
     <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>
     <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
@@ -385,7 +389,7 @@ async function viewCetak(qs) {
   $('#confirm')?.addEventListener('click', async () => {
     for (const o of pend) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
     const n = next + pend.length;
-    await saveShop({ nextSlot: n > SLOTS ? 1 : n });
+    await saveShop({ nextSlot: n > N ? 1 : n });
     session.pending = null; viewCetak(qs);
   });
 }
