@@ -29,7 +29,7 @@ async function run(store, mode, fn) {
 
 export const DEFAULT_SHOP = {
   name: 'Kafiya Daily', phone: '', logo: null, bw: false,
-  dx: 0, dy: 0, nextSlot: 1, lastBackup: null,
+  dx: 0, dy: 0, nextSlot: 1, lastBackup: null, paper: 'A4', cutLines: true,
 };
 
 export const getShop = async () => ({ ...DEFAULT_SHOP, ...((await run('kv', 'readonly', (s) => s.get('shop'))) || {}) });

@@ -1,7 +1,7 @@
 // Gambar lembar A4 (300 dpi) berisi label di slotnya, lalu unduh sebagai JPG.
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
-import { COL_X, LABEL_W, LABEL_H, slotTop } from './label.js';
+import { LABEL_W, LABEL_H, slotTop, paper, cutLines } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
 const PT = 0.3528;           // mm per pt
@@ -75,13 +75,19 @@ export async function sheetJPG(chunk, shop) {
   const logos = await logoSet(shop);
   const img = { mark: await loadImg(logos.mark), full: await loadImg(logos.full) };
   const c = document.createElement('canvas');
-  c.width = Math.round(210 * K); c.height = Math.round(297 * K);
+  const g = paper(shop);
+  c.width = Math.round(g.w * K); c.height = Math.round(g.h * K);
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.scale(K, K);
+  if (shop.cutLines !== false) {
+    ctx.save(); ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 0.2; ctx.setLineDash([1.5, 1]);
+    for (const l of cutLines(shop)) { ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); }
+    ctx.restore();
+  }
   chunk.orders.forEach((o, i) => {
     ctx.save();
-    ctx.translate(COL_X + shop.dx, slotTop(chunk.slots[i]) + shop.dy);
+    ctx.translate(g.colX + shop.dx, slotTop(chunk.slots[i], shop) + shop.dy);
     ctx.beginPath(); ctx.rect(0, 0, LABEL_W, LABEL_H); ctx.clip();
     drawLabel(ctx, o, shop, img);
     ctx.restore();

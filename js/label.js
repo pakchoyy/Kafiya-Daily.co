@@ -2,9 +2,34 @@
 import { logoSet } from './logo.js';
 
 export const LABEL_W = 70, LABEL_H = 50, SLOTS = 5;
-export const COL_X = 70;                                   // kolom tengah dimulai di 7 cm
-export const TOP = (297 - SLOTS * LABEL_H) / 2;            // sisa atas/bawah ±2,3 cm
-export const slotTop = (slot) => TOP + (slot - 1) * LABEL_H;
+export const PAPERS = { A4: { w: 210, h: 297, name: 'A4 (21 × 29,7 cm)' }, F4: { w: 215, h: 330, name: 'F4 / Folio (21,5 × 33 cm)' } };
+// Kolom label di tengah kertas, lima slot di tengah tinggi kertas.
+export function paper(shop) {
+  const p = PAPERS[shop?.paper] || PAPERS.A4;
+  return { ...p, colX: (p.w - LABEL_W) / 2, top: (p.h - SLOTS * LABEL_H) / 2 };
+}
+export const slotTop = (slot, shop) => paper(shop).top + (slot - 1) * LABEL_H;
+
+// Garis putus-putus bantu gunting: dua garis tegak sepanjang kertas di tepi kolom,
+// dan garis mendatar di batas tiap slot. Posisi dalam mm (sudah termasuk geser).
+export function cutLines(shop) {
+  const g = paper(shop), x = g.colX + shop.dx, y0 = g.top + shop.dy;
+  const v = [x, x + LABEL_W].map((xx) => ({ x1: xx, y1: 0, x2: xx, y2: g.h }));
+  const h = Array.from({ length: SLOTS + 1 }, (_, i) => y0 + i * LABEL_H).map((yy) => ({ x1: x - 8, y1: yy, x2: x + LABEL_W + 8, y2: yy }));
+  return [...v, ...h];
+}
+const cutSVG = (shop) => {
+  const g = paper(shop);
+  return `<svg class="cuts" width="${g.w}mm" height="${g.h}mm" viewBox="0 0 ${g.w} ${g.h}">${cutLines(shop)
+    .map((l) => `<line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('')}</svg>`;
+};
+// Ukuran halaman cetak mengikuti kertas yang dipilih.
+export function setPageSize(shop) {
+  const g = paper(shop);
+  let el = document.getElementById('page-size');
+  if (!el) { el = document.createElement('style'); el.id = 'page-size'; document.head.append(el); }
+  el.textContent = `@page { size: ${g.w}mm ${g.h}mm; margin: 0; } .sheet { width: ${g.w}mm; height: ${g.h - 1}mm; } #print-root { width: ${g.w}mm; }`;
+}
 
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -51,15 +76,18 @@ export function fitLabel(el) {
 // chunks: [{ slots:[n..], orders:[...] }] -> satu .sheet A4 per chunk
 export async function sheetsHTML(chunks, shop) {
   const logos = await logoSet(shop);
-  return chunks.map((ch) => `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm">${
-    ch.orders.map((o, i) => `<div class="slot" style="top:${slotTop(ch.slots[i])}mm">${labelHTML(o, shop, logos)}</div>`).join('')
+  setPageSize(shop);
+  const left = paper(shop).colX;
+  return chunks.map((ch) => `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${left}mm">${shop.cutLines !== false ? cutSVG(shop) : ''}${
+    ch.orders.map((o, i) => `<div class="slot" style="top:${slotTop(ch.slots[i], shop)}mm">${labelHTML(o, shop, logos)}</div>`).join('')
   }</section>`).join('');
 }
 
 export function testSheetHTML(shop) {
-  const cells = Array.from({ length: SLOTS }, (_, i) => `<div class="slot test" style="top:${slotTop(i + 1)}mm">
+  setPageSize(shop);
+  const cells = Array.from({ length: SLOTS }, (_, i) => `<div class="slot test" style="top:${slotTop(i + 1, shop)}mm">
     <div class="label testbox"><i class="h"></i><i class="v"></i><b>Slot ${i + 1}</b><span>70 × 50 mm</span></div></div>`).join('');
-  return `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm">${cells}</section>`;
+  return `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${paper(shop).colX}mm">${cells}</section>`;
 }
 
 // Cetak lewat #print-root; fitLabel dijalankan saat elemen sudah ada di DOM (di luar layar).
