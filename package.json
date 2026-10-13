@@ -1,0 +1,9 @@
+{
+  "name": "kafiya-daily",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/parser.test.mjs"
+  }
+}
