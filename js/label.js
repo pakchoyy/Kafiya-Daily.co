@@ -2,11 +2,17 @@
 import { logoSet } from './logo.js';
 
 export const LABEL_W = 70, LABEL_H = 50, SLOTS = 5;
-export const PAPERS = { A4: { w: 210, h: 297, name: 'A4 (21 × 29,7 cm)' }, F4: { w: 215, h: 330, name: 'F4 / Folio (21,5 × 33 cm)' } };
-// Kolom label di tengah kertas, lima slot di tengah tinggi kertas.
+// h = ukuran halaman yang dikirim ke printer; sheetH = tinggi kertas fisik untuk menghitung posisi label.
+// F4IL: kertas F4 dicetak dengan setelan "Indian Legal" (21,5 × 34,5 cm) untuk printer tanpa pilihan F4.
+export const PAPERS = {
+  A4: { w: 210, h: 297, name: 'A4 (21 × 29,7 cm)', dialog: 'A4' },
+  F4: { w: 215, h: 330, name: 'F4 / Folio (21,5 × 33 cm)', dialog: 'F4 / Folio' },
+  F4IL: { w: 215, h: 345, sheetH: 330, name: 'F4, printer pakai setelan Indian Legal', dialog: 'Indian Legal' },
+};
+// Kolom label di tengah kertas, lima slot di tengah tinggi kertas fisik.
 export function paper(shop) {
   const p = PAPERS[shop?.paper] || PAPERS.A4;
-  return { ...p, colX: (p.w - LABEL_W) / 2, top: (p.h - SLOTS * LABEL_H) / 2 };
+  return { ...p, colX: (p.w - LABEL_W) / 2, top: ((p.sheetH || p.h) - SLOTS * LABEL_H) / 2 };
 }
 export const slotTop = (slot, shop) => paper(shop).top + (slot - 1) * LABEL_H;
 
@@ -14,7 +20,7 @@ export const slotTop = (slot, shop) => paper(shop).top + (slot - 1) * LABEL_H;
 // dan garis mendatar di batas tiap slot. Posisi dalam mm (sudah termasuk geser).
 export function cutLines(shop) {
   const g = paper(shop), x = g.colX + shop.dx, y0 = g.top + shop.dy;
-  const v = [x, x + LABEL_W].map((xx) => ({ x1: xx, y1: 0, x2: xx, y2: g.h }));
+  const v = [x, x + LABEL_W].map((xx) => ({ x1: xx, y1: 0, x2: xx, y2: g.sheetH || g.h }));
   const h = Array.from({ length: SLOTS + 1 }, (_, i) => y0 + i * LABEL_H).map((yy) => ({ x1: x - 8, y1: yy, x2: x + LABEL_W + 8, y2: yy }));
   return [...v, ...h];
 }
