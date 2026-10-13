@@ -7,7 +7,7 @@ import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS, 
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 13; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 14; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
