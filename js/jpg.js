@@ -1,7 +1,7 @@
 // Gambar lembar A4 (300 dpi) berisi label di slotnya, lalu unduh sebagai JPG.
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
-import { LABEL_W, LABEL_H, slotTop, paper, cutLines } from './label.js';
+import { LABEL_W, LABEL_H, slotTop, paper, cutLines, THANKS, fromLine } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
 const PT = 0.3528;           // mm per pt
@@ -34,12 +34,19 @@ function drawImgFit(ctx, img, x, y, maxW, maxH, center) {
   return w;
 }
 
+function drawFoot(ctx, y, W, P) {
+  ctx.beginPath(); ctx.moveTo(P, y); ctx.lineTo(P + W, y); ctx.stroke();
+  ctx.font = `italic ${7.5 * PT}px ${FONT}`; ctx.textAlign = 'center';
+  ctx.fillText(THANKS, LABEL_W / 2, y + 3.3); ctx.textAlign = 'left';
+}
+
 function drawLabel(ctx, o, shop, img) {
   const P = 2.5, W = LABEL_W - 2 * P;
   ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 0.3; ctx.textBaseline = 'alphabetic';
   if (o.type === 'shopee') {
-    drawImgFit(ctx, img.full, P, 6, W, 15, true);
-    fitLine(ctx, o.resi, LABEL_W / 2, 33, W, 20, 8, true, 'center');
+    drawImgFit(ctx, img.full, P, 4, W, 15, true);
+    fitLine(ctx, o.resi, LABEL_W / 2, 28.5, W, 20, 8, true, 'center');
+    drawFoot(ctx, 33, W, P);
     return;
   }
   // kepala: logo + nama toko, ekspedisi di kanan, garis bawah
@@ -48,14 +55,16 @@ function drawLabel(ctx, o, shop, img) {
   ctx.fillText(courier, LABEL_W - P, P + 6); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
   fitLine(ctx, shop.name || '', P + lw + 1.5, P + 5.5, W - lw - cw - 4, 8, 6, true);
   ctx.beginPath(); ctx.moveTo(P, 12); ctx.lineTo(LABEL_W - P, 12); ctx.stroke();
-  if (o.resi) fitLine(ctx, o.resi, LABEL_W / 2, 18.5, W, 15, 8, true, 'center');
-  else { font(ctx, 8, false); ctx.fillText('No. resi:', P, 18.5); ctx.beginPath(); ctx.moveTo(P + 13, 18.8); ctx.lineTo(LABEL_W - P, 18.8); ctx.stroke(); }
+  // Dari / Untuk
+  font(ctx, 8, true); ctx.fillText('Dari :', P, 16); const dw = ctx.measureText('Dari : ').width;
+  font(ctx, 8, false); ctx.fillText(fromLine(shop), P + dw, 16, W - dw);
+  font(ctx, 8, true); ctx.fillText('Untuk :', P, 19.6);
   // penerima
-  font(ctx, 10, true); ctx.fillText(o.name, P, 23.5, W);
+  font(ctx, 10, true); ctx.fillText(o.name, P, 23.8, W);
   const nw = Math.min(W, ctx.measureText(o.name).width);
-  if (o.phone) { font(ctx, 10, false); ctx.fillText(` · ${o.phone}`, P + nw, 23.5, Math.max(0, W - nw)); }
-  // alamat: kecilkan sampai muat
-  const top = 25, bottom = LABEL_H - P - 4;
+  if (o.phone) { font(ctx, 10, false); ctx.fillText(` · ${o.phone}`, P + nw, 23.8, Math.max(0, W - nw)); }
+  // alamat: kecilkan sampai muat di atas garis kaki
+  const footY = LABEL_H - 7.5, top = 25, bottom = footY - 0.8;
   let pt = 8, lines;
   for (; ; pt -= 0.25) {
     font(ctx, pt, false); lines = wrap(ctx, o.address, W);
@@ -63,12 +72,7 @@ function drawLabel(ctx, o, shop, img) {
   }
   const lh = pt * PT * 1.15;
   lines.forEach((l, i) => { if (top + (i + 1) * lh <= bottom + 0.5) ctx.fillText(l, P, top + (i + 1) * lh - lh * 0.2); });
-  // kaki: pengirim dan berat
-  ctx.beginPath(); ctx.moveTo(P, bottom + 0.8); ctx.lineTo(LABEL_W - P, bottom + 0.8); ctx.stroke();
-  font(ctx, 6.5, true); ctx.textAlign = 'right'; const wt = o.weight ? `${o.weight} kg` : '';
-  ctx.fillText(wt, LABEL_W - P, LABEL_H - P - 0.6); const ww = ctx.measureText(wt).width; ctx.textAlign = 'left';
-  font(ctx, 6.5, false);
-  ctx.fillText(`Dari: ${shop.name}${shop.phone ? ` · ${shop.phone}` : ''}`, P, LABEL_H - P - 0.6, W - ww - 2);
+  drawFoot(ctx, footY, W, P);
 }
 
 // chunk: { slots:[...], orders:[...] } — sama dengan yang dipakai saat cetak.

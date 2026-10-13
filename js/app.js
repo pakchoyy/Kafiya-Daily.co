@@ -7,7 +7,7 @@ import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, slotsFo
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 15; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 16; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -201,7 +201,7 @@ async function viewBaru() {
     <label class="f" for="courier">Ekspedisi</label>
     <select id="courier">${COURIERS.map((c) => `<option ${d.courier === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
     <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
-    <div class="row"><div class="grow"><label class="f" for="resi">No. resi (boleh nanti)</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
+    <div class="row"><div class="grow"><label class="f" for="resi">No. resi (catatan, tidak dicetak)</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
     <div style="width:110px"><label class="f" for="weight">Berat (kg)</label><input type="number" id="weight" value="${esc(d.weight)}" step="0.1" min="0" inputmode="decimal"></div></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
   const shopee = `
@@ -478,7 +478,7 @@ async function viewPengaturan() {
 
   const showSt = () => { $('#v-dx').textContent = `${shop.dx} mm`; $('#v-dy').textContent = `${shop.dy} mm`; };
   showSt();
-  $('#sn').onchange = (e) => saveShop({ name: e.target.value.trim() || 'Kafiya Daily' });
+  $('#sn').onchange = (e) => saveShop({ name: e.target.value.trim() || 'Kafiya Daily.co' });
   $('#sp').onchange = (e) => saveShop({ phone: e.target.value.trim() });
   $('#bw').onchange = (e) => saveShop({ bw: e.target.checked });
   $('#pp').onchange = async (e) => { await saveShop({ paper: e.target.value }); viewPengaturan(); toast(`Kertas: ${PAPERS[e.target.value].name}`); };
