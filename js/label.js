@@ -63,7 +63,7 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 const courierName = (o) => (o.courier || 'Wahana').toUpperCase();
 
-export const THANKS = 'Thanks for order \u263A\uFE0E';
+export const THANKS = 'Thanks for your order \u263A\uFE0E';
 export const fromLine = (shop) => `${shop.name}${shop.phone ? ` (${shop.phone})` : ''}`;
 
 export function labelHTML(order, shop, logos) {
