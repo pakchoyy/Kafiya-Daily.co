@@ -2,7 +2,7 @@
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';
-import { LABEL_W, LABEL_H, slotTop, paper, cutLines, THANKS, fromLine } from './label.js';
+import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, fromLine } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
 const PT = 0.3528;           // mm per pt
@@ -42,6 +42,7 @@ function drawFoot(ctx, y, W, P) {
 }
 
 function drawLabel(ctx, o, shop, img) {
+  if (o.type === 'shopee-img') { drawImgFit(ctx, img.own, 1, 1, LABEL_W - 2, o.h - 2, true); return; }
   const P = 4.5, W = LABEL_W - 2 * P; // sisi kiri-kanan; atas-bawah tetap 2.5
   ctx.fillStyle = '#000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 0.3; ctx.textBaseline = 'alphabetic';
   if (o.type === 'shopee') {
@@ -77,10 +78,11 @@ function drawLabel(ctx, o, shop, img) {
   drawFoot(ctx, footY, W, P);
 }
 
-// chunk: { slots:[...], orders:[...] } — sama dengan yang dipakai saat cetak.
+// chunk: { orders:[...], ys:[...] } — sama dengan yang dipakai saat cetak.
 export async function sheetJPG(chunk, shop) {
   const logos = await logoSet(shop);
   const img = { mark: await loadImg(logos.mark), full: await loadImg(logos.full) };
+  const owns = await Promise.all(chunk.orders.map((o) => (o.img ? loadImg(o.img) : null)));
   const c = document.createElement('canvas');
   const g = paper(shop);
   c.width = Math.round(g.w * K); c.height = Math.round(g.h * K);
@@ -89,14 +91,14 @@ export async function sheetJPG(chunk, shop) {
   ctx.scale(K, K);
   if (shop.cutLines !== false) {
     ctx.save(); ctx.strokeStyle = '#9a9a9a'; ctx.lineWidth = 0.2; ctx.setLineDash([1.5, 1]);
-    for (const l of cutLines(shop, chunk.slots)) { ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); }
+    for (const l of cutLines(shop, boxesOf(chunk))) { ctx.beginPath(); ctx.moveTo(l.x1, l.y1); ctx.lineTo(l.x2, l.y2); ctx.stroke(); }
     ctx.restore();
   }
   chunk.orders.forEach((o, i) => {
     ctx.save();
-    ctx.translate(g.colX + shop.dx, slotTop(chunk.slots[i], shop) + shop.dy);
-    ctx.beginPath(); ctx.rect(0, 0, LABEL_W, LABEL_H); ctx.clip();
-    drawLabel(ctx, o, shop, img);
+    ctx.translate(g.colX + shop.dx, g.top + chunk.ys[i] + shop.dy);
+    ctx.beginPath(); ctx.rect(0, 0, LABEL_W, labelH(o)); ctx.clip();
+    drawLabel(ctx, o, shop, { ...img, own: owns[i] });
     ctx.restore();
   });
   return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.92));

@@ -3,15 +3,17 @@ import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extra
 import { readImage, readBarcodes } from './ocr.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
-import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, slotsFor, PAPERS } from './label.js';
+import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, paper, layout, usedMM, labelH } from './label.js';
+import { readShopeeLabels } from './shopee.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 18; // naikkan bersama CACHE di sw.js
+const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
+const APP_VERSION = 19; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
-let draft = { mode: 'wahana', chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
+let draft = { imgs: [], shopeeKind: 'asli', mode: 'wahana', chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
 let session = null; // { ids, printed:Set, pending:[orders]|null }
 
 const $ = (s, r = app) => r.querySelector(s);
@@ -48,14 +50,14 @@ function ask(title, msg, { ok = 'Ya', danger = false } = {}) {
 
 // Ubah atau hapus satu pesanan. onDone dipanggil setelah tersimpan/terhapus.
 function editOrder(o, onDone) {
-  const w = o.type !== 'shopee';
+  const w = !o.type.startsWith('shopee');
   modal(`<h2>Ubah pesanan ${w ? esc(o.courier) : 'Shopee'}</h2>
     ${w ? `<label class="f">Nama penerima</label><input type="text" id="en" value="${esc(o.name)}">
     <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
     <div class="row"><div class="grow"><label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}"></div>
     <div style="width:110px"><label class="f">Berat (kg)</label><input type="number" id="ew" step="0.1" value="${esc(o.weight)}"></div></div>` : ''}
-    <label class="f">No. resi${o.type === 'shopee' ? '' : ' (boleh kosong)'}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
+    <label class="f">No. resi${w ? ' (catatan)' : ''}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
@@ -163,16 +165,16 @@ async function viewPesanan() {
     <div class="stats">
       <div><b>${todo}</b><span>Belum dicetak</span></div>
       <div><b>${today}</b><span>Hari ini</span></div>
-      <div><b>0${shop.nextSlot}<small>/05</small></b><span>Slot berikutnya</span></div>
+      <div><b>${cm(paper(shop).cap - usedMM(shop))}<small> cm</small></b><span>Sisa kertas</span></div>
     </div>
     <div class="install-slot">${installCard()}</div>
     ${remind}
     <h2>Riwayat pesanan</h2>
     ${orders.length ? orders.map((o) => `<div class="item">
-      <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
+      <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
         <div class="t">${resiText(o)}</div>
-        <div class="muted ell">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
+        <div class="muted ell">${o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
       </a>
       <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
       ${orderBtns(o)}
@@ -205,18 +207,31 @@ async function viewBaru() {
     <div style="width:110px"><label class="f" for="weight">Berat (kg)</label><input type="number" id="weight" value="${esc(d.weight)}" step="0.1" min="0" inputmode="decimal"></div></div>
     <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
     <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`;
+  const asli = d.shopeeKind !== 'ringkas';
+  const shopeeAsli = `
+    <button class="btn block" id="sp">${ic('download', 18)} Upload PDF / screenshot label Shopee</button>
+    <input type="file" id="spf" accept="application/pdf,image/*" multiple hidden>
+    <p class="muted" style="margin-top:8px">Bisa pilih banyak file sekaligus. Kotak label dipotong otomatis dan dikecilkan ke lebar 7 cm (tabel produk tidak ikut).</p>
+    <div id="splist">${d.imgs.map((it, i) => `<div class="card spitem">
+      <img src="${it.img}" alt="">
+      <div class="row" style="margin-top:8px"><input type="text" data-sp="${i}" value="${esc(it.resi)}" placeholder="No. resi (tidak terbaca)" autocapitalize="characters"><button class="icon-btn" data-sprm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+      <div class="muted" style="margin-top:4px">Tinggi di kertas ${cm(it.h)} cm</div></div>`).join('')}</div>
+    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>`;
   const shopee = `
+    <div class="tabs sub" style="margin-bottom:14px"><button data-k="asli" class="${asli ? 'on' : ''}">Label asli Shopee</button><button data-k="ringkas" class="${asli ? '' : 'on'}">Label ringkas</button></div>
+    ${asli ? shopeeAsli : `
     <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
     <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
     <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload foto / screenshot resi</button>
     <input type="file" id="shotf" accept="image/*" multiple hidden>
     <div id="resisum"></div>
     <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
-    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`;
+    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`}`;
   frame('Pesanan baru', `<div class="tabs"><button data-m="wahana" class="${d.mode === 'wahana' ? 'on' : ''}">Wahana</button><button data-m="shopee" class="${d.mode === 'shopee' ? 'on' : ''}">Shopee</button></div>
     ${d.mode === 'wahana' ? wahana : shopee}`, { back: true, nav: 'baru' });
 
-  $$('.tabs button').forEach((b) => b.onclick = () => { d.mode = b.dataset.m; viewBaru(); });
+  $$('.tabs button[data-m]').forEach((b) => b.onclick = () => { d.mode = b.dataset.m; viewBaru(); });
+  $$('.tabs button[data-k]').forEach((b) => b.onclick = () => { d.shopeeKind = b.dataset.k; viewBaru(); });
   const bind = (id, key, fn) => { const el = $('#' + id); if (el) el.oninput = () => { d[key] = el.type === 'checkbox' ? el.checked : el.value; fn?.(); }; };
 
   if (d.mode === 'wahana') {
@@ -249,6 +264,25 @@ async function viewBaru() {
     };
     $('#go').onclick = () => saveWahana(true);
     $('#save1').onclick = () => saveWahana(false);
+  } else if (asli) {
+    $$('[data-sp]').forEach((el) => el.oninput = () => { d.imgs[el.dataset.sp].resi = el.value.replace(/\s+/g, '').toUpperCase(); });
+    $$('[data-sprm]').forEach((b) => b.onclick = () => { d.imgs.splice(Number(b.dataset.sprm), 1); viewBaru(); });
+    $('#sp').onclick = () => $('#spf').click();
+    $('#spf').onchange = async (e) => {
+      const files = [...e.target.files]; e.target.value = '';
+      if (!files.length) return;
+      const btn = $('#sp'); btn.disabled = true;
+      try {
+        for (const [i, f] of files.entries()) {
+          btn.textContent = `Membuka ${i + 1}/${files.length}…`;
+          d.imgs.push(...await readShopeeLabels(f, (m) => { btn.textContent = `${m} ${i + 1}/${files.length}`; }));
+        }
+        toast(`${d.imgs.length} label siap. Periksa no. resinya.`);
+      } catch (err) { toast(err.message || 'Gagal membaca file.'); }
+      viewBaru();
+    };
+    $('#go').onclick = () => saveShopeeImg(true);
+    $('#save1').onclick = () => saveShopeeImg(false);
   } else {
     const sum = () => {
       const items = parseResiList(d.resiList);
@@ -346,9 +380,7 @@ async function afterSave(ids, print) {
 }
 
 function slotText(n) {
-  const N = slotsFor(shop), free = N - Math.min(shop.nextSlot, N) + 1;
-  const sheets = n <= free ? 1 : 1 + Math.ceil((n - free) / N);
-  return `mulai slot ${shop.nextSlot}, ${sheets} lembar`;
+  return `sisa kertas ${cm(paper(shop).cap - usedMM(shop))} cm (± ${Math.floor((paper(shop).cap - usedMM(shop)) / 50)} label 5 cm)`;
 }
 
 async function saveWahana(print) {
@@ -376,6 +408,14 @@ async function saveShopee(print) {
   afterSave(ids, print);
 }
 
+async function saveShopeeImg(print) {
+  if (!draft.imgs.length) return toast('Upload minimal satu label Shopee.');
+  const ids = [];
+  for (const it of draft.imgs) ids.push(await db.put('orders', { type: 'shopee-img', resi: it.resi, img: it.img, h: it.h, createdAt: new Date().toISOString(), printed: false }));
+  draft.imgs = [];
+  afterSave(ids, print);
+}
+
 // ---------- Cetak ----------
 async function viewCetak(qs) {
   const ids = (qs.get('ids') || '').split(',').map(Number).filter(Boolean);
@@ -386,70 +426,79 @@ async function viewCetak(qs) {
 
   const remaining = orders.filter((o) => !session.printed.has(o.id));
   const logos = await logoSet(shop);
-  const N = slotsFor(shop);
-  const next = shop.nextSlot > N ? 1 : shop.nextSlot;
-  const chunk = remaining.slice(0, N - next + 1);
-  const pend = session.pending;
-  // Peta kolom kertas: tiap baris = satu slot, dari atas ke bawah.
-  const plan = new Map((pend || chunk).map((o, i) => [next + i, o]));
-  const slotOf = new Map([...plan].map(([n, o]) => [o.id, n]));
-  const who = (o) => (o.type === 'shopee' ? o.resi : o.name);
-  const slotRows = Array.from({ length: N }, (_, i) => {
-    const n = i + 1, o = plan.get(n), st = n < next ? 'used' : o ? 'print' : 'free';
-    const txt = st === 'used' ? 'Sudah terpakai' : o ? `Dicetak: ${who(o)}` : 'Kosong, untuk cetak berikutnya';
-    return `<button data-slot="${n}" class="srow ${st}"><b>${n}</b><span class="ell">${esc(txt)}</span></button>`;
-  }).join('');
+  const g = paper(shop), used = usedMM(shop), pend = session.pending;
+  const plan = pend || layout(remaining, used, shop);
+  const posOf = new Map(plan.orders.map((o, i) => [o.id, plan.ys[i]]));
+  const who = (o) => (o.type.startsWith('shopee') ? o.resi || 'Shopee' : o.name);
+  const left = g.cap - used;
+
+  // Gambar kolom kertas: bagian terpakai, label yang akan dicetak, dan sisa kosong (skala tinggi).
+  const pct = (mm) => `${(mm / g.cap) * 100}%`;
+  const colmap = `<div class="colmap">
+    ${used ? `<div class="seg used" style="top:0;height:${pct(used)}"><span>Terpakai ${cm(used)} cm</span></div>` : ''}
+    ${plan.orders.map((o, i) => `<div class="seg print" style="top:${pct(plan.ys[i])};height:${pct(labelH(o))}"><span class="ell">${esc(who(o))}</span></div>`).join('')}
+  </div>`;
 
   let status = '';
   if (pend) {
     status = `<div class="card"><b>Sudah tercetak dengan benar?</b>
-      <div class="muted">${pend.length} label di slot ${next}–${next + pend.length - 1}. Slot baru dicatat setelah kamu konfirmasi.</div>
+      <div class="muted">${pend.orders.length} label. Posisi kertas baru dicatat setelah kamu konfirmasi.</div>
       <div class="row" style="margin-top:10px"><button class="btn grow" id="confirm">Ya, tandai tercetak</button><button class="btn ghost" id="redo">Belum</button></div></div>`;
   } else if (!remaining.length) {
     status = `<div class="banner ok">Semua label sudah dicetak.</div>`;
-  } else if (session.printed.size && next === 1) {
-    status = `<div class="banner">Slot lembar sebelumnya habis. Ganti dengan stiker baru, lalu tekan “Lanjut cetak”. Sisa ${remaining.length} label.</div>`;
+  } else if (!plan.orders.length) {
+    status = `<div class="banner">Sisa kertas (${cm(left)} cm) tidak cukup untuk label berikutnya. Ganti dengan stiker baru, lalu tekan “Kertas baru”.</div>`;
+  } else if (session.printed.size && used === 0) {
+    status = `<div class="banner">Kertas sebelumnya sudah penuh. Pasang stiker baru, lalu tekan “Lanjut cetak”. Sisa ${remaining.length} label.</div>`;
   }
 
   frame('Cetak', `${status}
     <details class="slotbox" ${session.showMap ? 'open' : ''}>
-      <summary><span>${ic('printer', 18)}</span><span class="grow"><b>Mulai dari slot ${next}</b><br><span class="muted">${N - next + 1} dari ${N} slot kosong di kertas ini</span></span><span class="btn ghost sm">Ubah</span></summary>
-      <div class="sheetmap" style="margin-top:12px">${slotRows}</div>
-      <div class="muted" style="margin-top:8px;text-align:center">Slot = tempat label di kolom tengah kertas, dihitung dari atas.<br>Ketuk baris untuk memilih mulai dari slot mana.</div>
+      <summary><span>${ic('printer', 18)}</span><span class="grow"><b>${used ? `Mulai dari ${cm(used)} cm` : 'Kertas baru, mulai dari atas'}</b><br><span class="muted">Sisa ${cm(left)} dari ${cm(g.cap)} cm di kolom tengah</span></span><span class="btn ghost sm">Ubah</span></summary>
+      <div class="row" style="margin-top:14px;align-items:flex-start;gap:16px">
+        ${colmap}
+        <div class="grow">
+          <div class="muted">Bagian kolom yang sudah terpakai (dari atas):</div>
+          <div class="stepper" style="margin-top:8px"><button class="btn alt" data-u="-5" aria-label="Kurangi">−</button><b>${cm(used)} cm</b><button class="btn alt" data-u="5" aria-label="Tambah">+</button></div>
+          <div class="row" style="margin-top:8px;flex-wrap:wrap;gap:6px">${[0, 50, 100, 150, 200, 250].filter((v) => v < g.cap).map((v) => `<button class="btn ghost sm" data-uset="${v}">${cm(v)}</button>`).join('')}</div>
+          <div class="muted" style="margin-top:10px">Ukur dari tepi atas stiker sampai bekas potongan terakhir, atau pilih kelipatan 5 cm.</div>
+        </div>
+      </div>
     </details>
     <h2>Pratinjau (${orders.length} label)</h2>
-    <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${slotOf.has(o.id) ? `Slot ${slotOf.get(o.id)}` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
+    <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${posOf.has(o.id) ? `Mulai ${cm(posOf.get(o.id))} cm dari atas` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
-    ${remaining.length && !pend ? `<div class="card" style="margin-top:12px">${chunk.length} label dicetak di lembar ini (slot ${next}–${next + chunk.length - 1})${remaining.length > chunk.length ? `, sisa ${remaining.length - chunk.length} di lembar berikutnya` : ''}.</div>
-    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>
+    ${plan.orders.length && !pend ? `<div class="card" style="margin-top:12px">${plan.orders.length} label dicetak di kertas ini${remaining.length > plan.orders.length ? `, sisa ${remaining.length - plan.orders.length} di kertas berikutnya` : ''}.</div>
+    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>
     <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
-    <button class="btn ghost block" id="newsheet">Lembar baru, mulai dari slot 1</button>
+    <button class="btn ghost block" id="newsheet">Kertas baru, mulai dari atas</button>
     <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
-  const warn = $$('#prev .label').filter((l) => !fitLabel(l)).length;
+  const warn = $$('#prev .label.wahana, #prev .label.shopee').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
 
+  const setUsed = async (v) => { await saveShop({ used: Math.max(0, Math.min(g.cap, v)) }); session.pending = null; session.showMap = true; viewCetak(qs); };
   $('.slotbox').ontoggle = (e) => { session.showMap = e.target.open; };
-  $$('[data-slot]').forEach((b) => b.onclick = async () => { await saveShop({ nextSlot: Number(b.dataset.slot) }); session.pending = null; session.showMap = false; viewCetak(qs); toast(`Mulai dari slot ${b.dataset.slot}.`); });
-  $('#newsheet').onclick = async () => { await saveShop({ nextSlot: 1 }); session.pending = null; viewCetak(qs); };
+  $$('[data-u]').forEach((b) => b.onclick = () => setUsed(used + Number(b.dataset.u)));
+  $$('[data-uset]').forEach((b) => b.onclick = () => setUsed(Number(b.dataset.uset)));
+  $('#newsheet').onclick = async () => { await saveShop({ used: 0 }); session.pending = null; session.showMap = false; viewCetak(qs); toast('Kertas baru, mulai dari atas.'); };
   $('#print')?.addEventListener('click', async () => {
-    const slots = chunk.map((_, i) => next + i);
-    const bad = await printHTML(await sheetsHTML([{ slots, orders: chunk }], shop));
+    const bad = await printHTML(await sheetsHTML([plan], shop));
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
-    session.pending = chunk; viewCetak(qs);
+    session.pending = plan; viewCetak(qs);
   });
   $('#jpg')?.addEventListener('click', async () => {
     const b = $('#jpg'); b.disabled = true; b.textContent = 'Membuat gambar…';
-    const blob = await sheetJPG({ slots: chunk.map((_, i) => next + i), orders: chunk }, shop);
-    downloadBlob(blob, `kafiya-label-${new Date().toISOString().slice(0, 10)}-slot${next}.jpg`);
-    toast('JPG diunduh. Cetak di A4 dengan ukuran asli / 100%.');
-    session.pending = chunk; viewCetak(qs);
+    const blob = await sheetJPG(plan, shop);
+    downloadBlob(blob, `kafiya-label-${new Date().toISOString().slice(0, 10)}.jpg`);
+    toast('JPG diunduh. Cetak dengan ukuran asli / 100%.');
+    session.pending = plan; viewCetak(qs);
   });
   $('#redo')?.addEventListener('click', () => { session.pending = null; viewCetak(qs); });
   $('#confirm')?.addEventListener('click', async () => {
-    for (const o of pend) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
-    const n = next + pend.length;
-    await saveShop({ nextSlot: n > N ? 1 : n });
+    for (const o of pend.orders) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
+    // Sisa kurang dari 2 cm dianggap habis.
+    await saveShop({ used: g.cap - pend.end < 20 ? 0 : pend.end });
     session.pending = null; viewCetak(qs);
   });
 }
@@ -461,8 +510,8 @@ async function viewAntrian() {
     ${todo.length ? `<div class="row spread" style="margin:8px 0"><span class="muted">${todo.length} label menunggu</span><button class="btn ghost sm" id="all">Pilih semua</button></div>
     ${todo.map((o) => `<label class="item" style="cursor:pointer">
       <input type="checkbox" data-q="${o.id}" checked>
-      <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
-      <span class="grow"><span class="t" style="display:block">${resiText(o)}</span><span class="muted ell" style="display:block">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
+      <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
+      <span class="grow"><span class="t" style="display:block">${resiText(o)}</span><span class="muted ell" style="display:block">${o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
       ${orderBtns(o)}
     </label>`).join('')}
     <button class="btn block" id="go">${ic('printer', 20)} Lanjut ke cetak</button>`

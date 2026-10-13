@@ -106,7 +106,8 @@ export function extractResi(raw) {
   const all = [];
   for (const m of String(raw || '').toUpperCase().matchAll(/\b[A-Z0-9]{10,25}\b/g)) {
     const t = fixDigits(m[0]);
-    if (/\d{5}/.test(t) && !/^(0|62)8\d{8,12}$/.test(t) && !all.includes(t)) all.push(t);
+    // buang no. HP dan no. pesanan Shopee (diawali tanggal yymmdd)
+    if (/\d{5}/.test(t) && !/^(0|62)8\d{8,12}$/.test(t) && !/^\d{6}[A-Z0-9]{7,10}$/.test(t) && !all.includes(t)) all.push(t);
   }
   const known = all.filter((t) => RESI_PREFIX.test(t));
   return known.length ? known : all;

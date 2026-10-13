@@ -11,29 +11,43 @@ export const PAPERS = {
   F4: { w: 215, h: 330, name: 'F4 / Folio (21,5 × 33 cm)', dialog: 'F4 / Folio' },
   F4IL: { w: 215, h: 345, sheetH: 330, name: 'F4, printer pakai setelan Indian Legal', dialog: 'Indian Legal' },
 };
-// Kolom label di tengah kertas, lima slot di tengah tinggi kertas fisik.
+// Kolom label 7 cm di tengah kertas. Label ditumpuk dari atas (setelah margin) tanpa celah;
+// tinggi label Wahana/ringkas 5 cm, label asli Shopee mengikuti gambarnya.
 export function paper(shop) {
   const p = PAPERS[shop?.paper] || PAPERS.A4;
-  const sheetH = p.sheetH || p.h, slots = Math.floor((sheetH - 2 * MIN_MARGIN) / LABEL_H); // A4 = 5, F4 = 6
-  return { ...p, slots, colX: (p.w - LABEL_W) / 2, top: (sheetH - slots * LABEL_H) / 2 };
+  const sheetH = p.sheetH || p.h;
+  return { ...p, sheetH, colX: (p.w - LABEL_W) / 2, top: MIN_MARGIN, cap: sheetH - 2 * MIN_MARGIN };
 }
-export const slotsFor = (shop) => paper(shop).slots;
-export const slotTop = (slot, shop) => paper(shop).top + (slot - 1) * LABEL_H;
+export const labelH = (o) => (o.type === 'shopee-img' ? o.h : LABEL_H);
+export const usedMM = (shop) => Math.max(0, Math.min(shop.used || 0, paper(shop).cap));
+
+// Ambil label berurutan yang masih muat mulai dari posisi `used` (mm). ys = posisi tiap label dari atas kolom.
+export function layout(orders, used, shop) {
+  const cap = paper(shop).cap, out = [], ys = [];
+  let y = used;
+  for (const o of orders) {
+    const h = labelH(o);
+    if (y + h > cap + 0.01) break;
+    out.push(o); ys.push(y); y += h;
+  }
+  return { orders: out, ys, end: y };
+}
 
 // Garis putus-putus bantu gunting, hanya mengelilingi label yang dicetak kali ini
 // (sisa kertas tetap bersih untuk dipakai lagi). Posisi dalam mm, sudah termasuk geser.
-export function cutLines(shop, slots) {
+export function cutLines(shop, boxes) {
   const g = paper(shop), x = g.colX + shop.dx, out = [];
-  for (const s of new Set(slots)) {
-    const y = g.top + shop.dy + (s - 1) * LABEL_H;
-    out.push({ x1: x, y1: y, x2: x + LABEL_W, y2: y }, { x1: x, y1: y + LABEL_H, x2: x + LABEL_W, y2: y + LABEL_H },
-      { x1: x, y1: y, x2: x, y2: y + LABEL_H }, { x1: x + LABEL_W, y1: y, x2: x + LABEL_W, y2: y + LABEL_H });
+  for (const { y: yy, h } of boxes) {
+    const y = g.top + shop.dy + yy;
+    out.push({ x1: x, y1: y, x2: x + LABEL_W, y2: y }, { x1: x, y1: y + h, x2: x + LABEL_W, y2: y + h },
+      { x1: x, y1: y, x2: x, y2: y + h }, { x1: x + LABEL_W, y1: y, x2: x + LABEL_W, y2: y + h });
   }
   return out;
 }
-const cutSVG = (shop, slots) => {
+export const boxesOf = (ch) => ch.orders.map((o, i) => ({ y: ch.ys[i], h: labelH(o) }));
+const cutSVG = (shop, boxes) => {
   const g = paper(shop);
-  return `<svg class="cuts" width="${g.w}mm" height="${g.h}mm" viewBox="0 0 ${g.w} ${g.h}">${cutLines(shop, slots)
+  return `<svg class="cuts" width="${g.w}mm" height="${g.h}mm" viewBox="0 0 ${g.w} ${g.h}">${cutLines(shop, boxes)
     .map((l) => `<line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('')}</svg>`;
 };
 // Ukuran halaman cetak mengikuti kertas yang dipilih.
@@ -53,6 +67,9 @@ export const THANKS = 'Thanks for order \u263A\uFE0E';
 export const fromLine = (shop) => `${shop.name}${shop.phone ? ` (${shop.phone})` : ''}`;
 
 export function labelHTML(order, shop, logos) {
+  if (order.type === 'shopee-img') {
+    return `<div class="label img" style="height:${order.h}mm"><img src="${order.img}" alt="Label Shopee ${esc(order.resi)}"></div>`;
+  }
   if (order.type === 'shopee') {
     return `<div class="label shopee">
       <div class="lb-logo-wrap"><img class="lb-logo" src="${logos.full}" alt=""></div>
@@ -91,19 +108,19 @@ export function fitLabel(el) {
   return ok;
 }
 
-// chunks: [{ slots:[n..], orders:[...] }] -> satu .sheet A4 per chunk
+// chunks: [{ orders:[...], ys:[mm dari atas kolom] }] -> satu lembar per chunk
 export async function sheetsHTML(chunks, shop) {
   const logos = await logoSet(shop);
   setPageSize(shop);
   const left = paper(shop).colX;
-  return chunks.map((ch) => `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${left}mm">${shop.cutLines !== false ? cutSVG(shop, ch.slots) : ''}${
-    ch.orders.map((o, i) => `<div class="slot" style="top:${slotTop(ch.slots[i], shop)}mm">${labelHTML(o, shop, logos)}</div>`).join('')
+  return chunks.map((ch) => `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${left}mm">${shop.cutLines !== false ? cutSVG(shop, boxesOf(ch)) : ''}${
+    ch.orders.map((o, i) => `<div class="slot" style="top:${paper(shop).top + ch.ys[i]}mm">${labelHTML(o, shop, logos)}</div>`).join('')
   }</section>`).join('');
 }
 
 export function testSheetHTML(shop) {
   setPageSize(shop);
-  const cells = Array.from({ length: slotsFor(shop) }, (_, i) => `<div class="slot test" style="top:${slotTop(i + 1, shop)}mm">
+  const cells = Array.from({ length: Math.floor(paper(shop).cap / LABEL_H) }, (_, i) => `<div class="slot test" style="top:${paper(shop).top + i * LABEL_H}mm">
     <div class="label testbox"><i class="h"></i><i class="v"></i><b>Slot ${i + 1}</b><span>70 × 50 mm</span></div></div>`).join('');
   return `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${paper(shop).colX}mm">${cells}</section>`;
 }
