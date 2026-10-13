@@ -1,6 +1,6 @@
 import * as db from './db.js';
 import { parseChat, parseResiList, normalizePhone } from './parser.js';
-import { processLogo, logoSrc } from './logo.js';
+import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS } from './label.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
@@ -35,7 +35,7 @@ async function saveShop(patch) { shop = { ...shop, ...patch }; await db.saveShop
 
 // ---------- kerangka ----------
 function frame(title, body, { back = false, nav = 'pesanan' } = {}) {
-  const logo = shop.logo ? `<img src="${esc(shop.logo)}" alt="">` : '';
+  const logo = `<img src="${esc(shop.logo || DEFAULT_LOGOS.mark)}" alt="">`;
   app.innerHTML = `<header class="top">${back ? '<a class="back" href="#/" aria-label="Kembali">&#8249;</a>' : logo}<h1>${esc(title)}</h1></header>
   <main>${body}</main>
   <nav class="bottom">
@@ -172,7 +172,7 @@ async function viewCetak(qs) {
   if (!orders.length) return frame('Cetak', '<div class="empty">Pesanan tidak ditemukan.</div>', { back: true });
 
   const remaining = orders.filter((o) => !session.printed.has(o.id));
-  const logo = await logoSrc(shop);
+  const logos = await logoSet(shop);
   const next = shop.nextSlot;
   const free = SLOTS - next + 1;
   const chunk = remaining.slice(0, free);
@@ -195,7 +195,7 @@ async function viewCetak(qs) {
 
   frame('Cetak', `${status}
     <h2 style="margin-top:0">Pratinjau (${orders.length} label)</h2>
-    <div class="preview" id="prev">${orders.slice(0, 2).map((o) => labelHTML(o, shop, logo)).join('')}</div>
+    <div class="preview" id="prev">${orders.slice(0, 2).map((o) => labelHTML(o, shop, logos)).join('')}</div>
     ${orders.length > 2 ? `<div class="muted" style="text-align:center">+ ${orders.length - 2} label lainnya</div>` : ''}
     <div id="warn"></div>
     <h2>Slot kertas</h2>
@@ -213,7 +213,7 @@ async function viewCetak(qs) {
   $('#newsheet').onclick = async () => { await saveShop({ nextSlot: 1 }); session.pending = null; viewCetak(qs); };
   $('#print')?.addEventListener('click', async () => {
     const slots = chunk.map((_, i) => next + i);
-    const bad = printHTML(await sheetsHTML([{ slots, orders: chunk }], shop));
+    const bad = await printHTML(await sheetsHTML([{ slots, orders: chunk }], shop));
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
     session.pending = chunk; viewCetak(qs);
   });
@@ -260,10 +260,10 @@ async function viewPengaturan() {
       <label class="f" for="sp">No. HP pengirim (tercetak di label)</label><input type="tel" id="sp" value="${esc(shop.phone)}" inputmode="tel">
     </div>
     <h2>Logo</h2><div class="card">
-      <div class="logo-prev">${shop.logo ? `<img src="${esc(shop.logo)}" alt="Logo">` : '<span class="muted">Belum ada logo</span>'}</div>
+      <div class="logo-prev"><img src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="Logo"></div>
       <input type="file" id="lf" accept="image/*" hidden>
-      <div class="row" style="margin-top:10px"><button class="btn alt grow" id="lb">${shop.logo ? 'Ganti logo' : 'Pilih logo'}</button>${shop.logo ? '<button class="btn danger" id="lx">Hapus</button>' : ''}</div>
-      <div class="muted" style="margin-top:6px">Latar putih dihapus otomatis dan ruang kosong dipotong.</div>
+      <div class="row" style="margin-top:10px"><button class="btn alt grow" id="lb">${shop.logo ? 'Ganti logo' : 'Pakai logo sendiri'}</button>${shop.logo ? '<button class="btn danger" id="lx">Hapus</button>' : ''}</div>
+      <div class="muted" style="margin-top:6px">${shop.logo ? 'Logo kustom dipakai.' : 'Logo Kafiya Daily bawaan dipakai.'} Logo baru: latar putih dihapus otomatis dan ruang kosong dipotong.</div>
       <div class="row" style="margin-top:12px"><input type="checkbox" id="bw" ${shop.bw ? 'checked' : ''}><label for="bw">Logo hitam-putih di label (hemat tinta)</label></div>
     </div>
     <h2>Posisi cetak</h2><div class="card">
