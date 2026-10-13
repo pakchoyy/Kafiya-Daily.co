@@ -51,3 +51,17 @@ test('ambil resi dari teks OCR', () => {
 test('resi SPX berakhiran huruf', () => {
   assert.deepEqual(extractResi('SPX Hemat No. Resi\nSPXID06770099194A\nSPX Express Magetan Hub (3.12km)'), ['SPXID06770099194A']);
 });
+
+import { parseChatOcr } from '../js/parser.js';
+
+test('screenshot WhatsApp asli: abaikan obrolan, ambil an. dan baris alamat', () => {
+  const raw = '14:03\n0,1KB/d + = = GD\n) SILVYAOS\nOX\n_—— me\nAlamat nya mba 0431 7\nMba kelebihan total 100 RB 3 pcs sama ongki\n6rb jadi 106 , kembalian 10rb tak taruh dalam\npaket ya\n04.32 V/\nOkeee mba\n08.06\nMargoasri rt 09/rw 05, mundu , tulung , klaten\n08.06\nan. SILVYANI LENDY ANGGRENI\n08.07\nKetik pesan\nv © O';
+  const r = parseChatOcr(raw);
+  assert.equal(r.name, 'Silvyani Lendy Anggreni');
+  assert.equal(r.phone, '');
+  assert.equal(r.address, 'Margoasri rt 09/rw 05, mundu, tulung, klaten');
+});
+
+test('tempel teks dengan an. juga dikenali', () => {
+  assert.equal(parseChat('Margoasri rt 09/rw 05, Klaten\nan. Silvyani').name, 'Silvyani');
+});

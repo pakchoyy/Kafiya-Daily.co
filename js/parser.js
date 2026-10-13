@@ -4,7 +4,7 @@ const PHONE_RE = /(?:\+?62|0)\s*8[\d\s.\-]{7,14}\d/;
 const ADDR_KW = /\b(jl|jln|jalan|gg|gang|rt|rw|no|desa|ds|kel|kelurahan|kec|kecamatan|kab|kabupaten|kota|blok|perum|perumahan|komp|kompleks|dusun|dsn|kp|kampung|prov|provinsi)\b/i;
 const WA_PREFIX = /^\[?\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\]?\s*(?:-\s*)?[^:]{1,40}:\s*/;
 const LBL = {
-  name: /^(?:nama(?:\s+penerima)?|penerima|atas\s*nama|a\/n)\s*[:=\-]\s*/i,
+  name: /^(?:(?:nama(?:\s+penerima)?|penerima|atas\s*nama)\s*[:=\-]|(?:a\/n|a\.n\.?|an\.)\s*[:=\-]?)\s*/i,
   phone: /^(?:no\.?\s*(?:hp|telp?|tlp|wa|whatsapp)|hp|telp?|tlp|wa|whatsapp|nomor(?:\s+(?:hp|telepon|wa))?|kontak)\s*[:=\-]\s*/i,
   addr: /^(?:alamat(?:\s+lengkap|\s+pengiriman)?|almt)\s*[:=\-]\s*/i,
 };
@@ -72,6 +72,28 @@ export function cleanOcr(raw) {
     .map((l) => l.replace(/[|]/g, ' ').replace(/\s+\d{1,2}[.:]\d{2}\s*[✓√vV/\\]*\s*$/, '').trim())
     .filter((l) => l && !/^\d{1,2}[.:]\d{2}$/.test(l) && !/^(ketik pesan|pesan|hari ini|kemarin|online|mengetik)/i.test(l))
     .join('\n');
+}
+
+// Screenshot chat berisi banyak obrolan lain. Ambil hanya yang jelas: nama berlabel (Nama:, an., a/n),
+// nomor HP, dan baris yang memang tampak alamat (RT/RW, desa, kec, kab, jl, kode pos, ...).
+const ADDR_LINE = new RegExp(ADDR_KW.source + '|\\b\\d{5}\\b|\\brt\\s*\\d|\\brw\\s*\\d', 'i');
+const CHATTER = /\b(mba|mbak|kak|ya|ok|oke+|siap|makasih|terima\s*kasih|ongki?r?|total|transfer|kembalian|pcs|rb|ribu)\b/i;
+
+export function parseChatOcr(raw) {
+  const lines = cleanOcr(raw).split('\n');
+  let name = '', phone = '';
+  const addr = [];
+  for (const l of lines) {
+    let m;
+    if (!name && (m = l.match(LBL.name))) { name = l.slice(m[0].length).trim(); continue; }
+    const p = l.match(PHONE_RE);
+    if (p && !phone) phone = normalizePhone(p[0]);
+    if ((m = l.match(LBL.addr))) { addr.push(l.slice(m[0].length).trim()); continue; }
+    if (ADDR_LINE.test(l) && !CHATTER.test(l)) addr.push(p ? l.replace(p[0], '').trim() : l);
+  }
+  if (!name && !addr.length) return parseChat(cleanOcr(raw));
+  const address = addr.join(', ').replace(/\s+,/g, ',').replace(/\s+/g, ' ').replace(/(,\s*)+/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
+  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address };
 }
 
 // Ambil kandidat no. resi dari teks OCR: kode huruf/angka 10–25 karakter yang mengandung angka.
