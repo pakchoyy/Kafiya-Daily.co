@@ -359,7 +359,7 @@ async function viewCetak(qs) {
     <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>
     <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
     <button class="btn ghost block" id="newsheet">Lembar baru, mulai dari slot 1</button>
-    <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).name.split(' ')[0])}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
+    <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
   const warn = $$('#prev .label').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
@@ -454,7 +454,7 @@ async function viewPengaturan() {
       <label class="f" for="pp" style="margin-top:0">Ukuran kertas stiker</label>
       <select id="pp">${Object.entries(PAPERS).map(([k, p]) => `<option value="${k}" ${shop.paper === k ? 'selected' : ''}>${p.name}</option>`).join('')}</select>
       <div class="row" style="margin-top:14px"><input type="checkbox" id="cl" ${shop.cutLines !== false ? 'checked' : ''}><label for="cl">Garis putus-putus bantu gunting</label></div>
-      <div class="muted" style="margin-top:6px">Di dialog cetak, pilih ukuran kertas yang sama (${esc((PAPERS[shop.paper] || PAPERS.A4).name)}).</div>
+      <div class="muted" style="margin-top:6px">Di dialog cetak HP, pilih ukuran kertas <b>${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}</b> dan skala 100%.</div>
     </div>
     <h2>Posisi cetak</h2><div class="card">
       ${stepper('dx', 'Kiri / kanan', '')}${stepper('dy', 'Atas / bawah', '')}
