@@ -47,3 +47,7 @@ test('OCR WhatsApp dibersihkan lalu dirapikan', () => {
 test('ambil resi dari teks OCR', () => {
   assert.deepEqual(extractResi('No. Resi: SPXID0412345678\nspxid0412345679 HP 081234567890\nTotal 125000'), ['SPXID0412345678', 'SPXID0412345679']);
 });
+
+test('resi SPX berakhiran huruf', () => {
+  assert.deepEqual(extractResi('SPX Hemat No. Resi\nSPXID06770099194A\nSPX Express Magetan Hub (3.12km)'), ['SPXID06770099194A']);
+});
