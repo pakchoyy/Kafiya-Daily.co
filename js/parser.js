@@ -1,0 +1,79 @@
+// Perapi chat WhatsApp -> {name, phone, address}. Aturan sederhana, jalan offline.
+
+const PHONE_RE = /(?:\+?62|0)\s*8[\d\s.\-]{7,14}\d/;
+const ADDR_KW = /\b(jl|jln|jalan|gg|gang|rt|rw|no|desa|ds|kel|kelurahan|kec|kecamatan|kab|kabupaten|kota|blok|perum|perumahan|komp|kompleks|dusun|dsn|kp|kampung|prov|provinsi)\b/i;
+const WA_PREFIX = /^\[?\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4},?\s+\d{1,2}[.:]\d{2}(?:[.:]\d{2})?\]?\s*(?:-\s*)?[^:]{1,40}:\s*/;
+const LBL = {
+  name: /^(?:nama(?:\s+penerima)?|penerima|atas\s*nama|a\/n)\s*[:=\-]\s*/i,
+  phone: /^(?:no\.?\s*(?:hp|telp?|tlp|wa|whatsapp)|hp|telp?|tlp|wa|whatsapp|nomor(?:\s+(?:hp|telepon|wa))?|kontak)\s*[:=\-]\s*/i,
+  addr: /^(?:alamat(?:\s+lengkap|\s+pengiriman)?|almt)\s*[:=\-]\s*/i,
+};
+
+export function normalizePhone(s) {
+  let d = String(s || '').replace(/\D/g, '');
+  if (d.startsWith('62')) d = '0' + d.slice(2);
+  else if (d.startsWith('8')) d = '0' + d;
+  return d;
+}
+
+function titleCase(s) {
+  if (s !== s.toLowerCase() && s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/(^|[\s.'-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
+}
+
+export function parseChat(raw) {
+  const lines = String(raw || '').replace(/\r/g, '').split('\n')
+    .map((l) => l.replace(WA_PREFIX, '').trim()).filter(Boolean);
+
+  let name = '', phone = '', cur = null;
+  const addr = [], loose = [];
+
+  for (const l of lines) {
+    let m;
+    if ((m = l.match(LBL.name))) { name = l.slice(m[0].length).trim(); cur = null; continue; }
+    if ((m = l.match(LBL.phone))) {
+      const v = l.slice(m[0].length);
+      const p = v.match(PHONE_RE);
+      phone = normalizePhone(p ? p[0] : v);
+      cur = null; continue;
+    }
+    if ((m = l.match(LBL.addr))) { addr.push(l.slice(m[0].length).trim()); cur = 'addr'; continue; }
+    (cur === 'addr' ? addr : loose).push(l);
+  }
+
+  // baris tanpa label: cari HP, pisahkan teks sebelum/sesudahnya
+  const rest = [];
+  for (const l of loose) {
+    const p = !phone && l.match(PHONE_RE);
+    if (p) {
+      phone = normalizePhone(p[0]);
+      const before = l.slice(0, p.index).replace(/[,;:\-\s]+$/, '').trim();
+      const after = l.slice(p.index + p[0].length).replace(/^[,;:\-\s]+/, '').trim();
+      if (before) rest.push(before);
+      if (after) rest.push(after);
+    } else rest.push(l);
+  }
+
+  if (!name) {
+    const i = rest.findIndex((l) => l.length <= 40 && !/\d/.test(l) && !ADDR_KW.test(l));
+    if (i >= 0) name = rest.splice(i, 1)[0];
+    else if (rest.length > 1) name = rest.shift();
+  }
+
+  const address = [...rest, ...addr].join(', ')
+    .replace(/\s+/g, ' ').replace(/(,\s*)+/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
+
+  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address };
+}
+
+// Daftar resi Shopee: satu per baris, huruf besar, tanpa spasi.
+export function parseResiList(raw) {
+  const seen = new Set();
+  return String(raw || '').split(/\r?\n/)
+    .map((l) => l.replace(/\s+/g, '').toUpperCase()).filter(Boolean)
+    .map((resi) => {
+      const dup = seen.has(resi);
+      seen.add(resi);
+      return { resi, dup, odd: !/^[A-Z0-9-]{8,25}$/.test(resi) };
+    });
+}
