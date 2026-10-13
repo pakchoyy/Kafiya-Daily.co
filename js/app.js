@@ -7,7 +7,7 @@ import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, slotsFo
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
-const APP_VERSION = 17; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 18; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -187,7 +187,7 @@ async function viewBaru() {
   const wahana = `
     ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
       <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
-    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat (bisa banyak)</button>
+    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat</button>
     <input type="file" id="shotf" accept="image/*" multiple hidden>
     <label class="f" for="chat">Atau tempel teks chat WhatsApp</label>
     <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
@@ -203,14 +203,16 @@ async function viewBaru() {
     <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
     <div class="row"><div class="grow"><label class="f" for="resi">No. resi (catatan, tidak dicetak)</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
     <div style="width:110px"><label class="f" for="weight">Berat (kg)</label><input type="number" id="weight" value="${esc(d.weight)}" step="0.1" min="0" inputmode="decimal"></div></div>
-    <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
+    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
+    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`;
   const shopee = `
     <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
     <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
-    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload screenshot / foto label (bisa banyak)</button>
+    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload foto / screenshot resi</button>
     <input type="file" id="shotf" accept="image/*" multiple hidden>
     <div id="resisum"></div>
-    <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
+    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
+    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`;
   frame('Pesanan baru', `<div class="tabs"><button data-m="wahana" class="${d.mode === 'wahana' ? 'on' : ''}">Wahana</button><button data-m="shopee" class="${d.mode === 'shopee' ? 'on' : ''}">Shopee</button></div>
     ${d.mode === 'wahana' ? wahana : shopee}`, { back: true, nav: 'baru' });
 
@@ -245,7 +247,8 @@ async function viewBaru() {
       ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
       toast('Sudah dirapikan. Periksa dulu ya.');
     };
-    $('#go').onclick = saveWahana;
+    $('#go').onclick = () => saveWahana(true);
+    $('#save1').onclick = () => saveWahana(false);
   } else {
     const sum = () => {
       const items = parseResiList(d.resiList);
@@ -271,7 +274,8 @@ async function viewBaru() {
       $('#resilist').value = d.resiList; sum();
       toast(`${found.length} resi ditambahkan. Periksa dulu ya.`);
     });
-    $('#go').onclick = saveShopee;
+    $('#go').onclick = () => saveShopee(true);
+    $('#save1').onclick = () => saveShopee(false);
   }
 }
 
@@ -309,7 +313,8 @@ function batchWahana(texts) {
       <label class="f">No. HP</label><input type="tel" data-k="phone" value="${esc(r.phone)}">
       <label class="f">Alamat</label><textarea data-k="address" style="min-height:80px">${esc(r.address)}</textarea>
     </div>`).join('')}
-    <button class="btn block" id="bsave">${ic('printer', 20)} Simpan semua & cetak</button>`, (m, close) => {
+    <div class="row"><button class="btn ghost grow" id="bonly">Simpan semua</button><button class="btn grow" id="bprint">${ic('printer', 18)} Simpan & cetak</button></div>
+    <button id="bsave" hidden></button>`, (m, close) => {
     m.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => b.closest('.batch').remove());
     $('#bsave', m).onclick = async () => {
       const list = [...m.querySelectorAll('.batch')].map((c) => Object.fromEntries([...c.querySelectorAll('[data-k]')].map((el) => [el.dataset.k, el.value.trim()])));
@@ -325,10 +330,19 @@ function batchWahana(texts) {
           await db.put('customers', { ...(hit || {}), name: r.name, phone, address: r.address });
         }
       }
-      close(); toast(`${ids.length} pesanan disimpan.`);
-      location.hash = `#/cetak?ids=${ids.join(',')}`;
+      close(); afterSave(ids, m.dataset.print === '1');
     };
+    $('#bonly', m).onclick = () => { m.dataset.print = '0'; $('#bsave', m).click(); };
+    $('#bprint', m).onclick = () => { m.dataset.print = '1'; $('#bsave', m).click(); };
   });
+}
+
+// Setelah simpan: langsung ke cetak, atau tetap di form untuk menambah pesanan lagi.
+async function afterSave(ids, print) {
+  if (print) { location.hash = `#/cetak?ids=${ids.join(',')}`; return; }
+  const waiting = (await db.all('orders')).filter((o) => !o.printed).length;
+  toast(`${ids.length > 1 ? `${ids.length} pesanan` : 'Pesanan'} disimpan. ${waiting} label menunggu di tab Cetak.`);
+  await viewBaru(); window.scrollTo(0, 0);
 }
 
 function slotText(n) {
@@ -337,7 +351,7 @@ function slotText(n) {
   return `mulai slot ${shop.nextSlot}, ${sheets} lembar`;
 }
 
-async function saveWahana() {
+async function saveWahana(print) {
   const d = draft;
   const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
   const name = d.name.trim(), address = d.address.trim(), resi = d.resi.replace(/\s+/g, '').toUpperCase();
@@ -350,16 +364,16 @@ async function saveWahana() {
     await db.put('customers', { ...(hit || {}), name, phone, address });
   }
   Object.assign(draft, { chat: '', name: '', phone: '', address: '', resi: '', other: '' });
-  location.hash = `#/cetak?ids=${id}`;
+  afterSave([id], print);
 }
 
-async function saveShopee() {
+async function saveShopee(print) {
   const items = parseResiList(draft.resiList).filter((i) => !i.dup);
   if (!items.length) return toast('Isi minimal satu resi.');
   const ids = [];
   for (const i of items) ids.push(await db.put('orders', { type: 'shopee', resi: i.resi, createdAt: new Date().toISOString(), printed: false }));
   draft.resiList = '';
-  location.hash = `#/cetak?ids=${ids.join(',')}`;
+  afterSave(ids, print);
 }
 
 // ---------- Cetak ----------
@@ -398,9 +412,11 @@ async function viewCetak(qs) {
   }
 
   frame('Cetak', `${status}
-    <h2 style="margin-top:0">Posisi di kertas (${N} slot per kolom)</h2>
-    <div class="sheetmap">${slotRows}</div>
-    <div class="muted" style="margin-top:8px;text-align:center">Slot = tempat label di kolom tengah kertas, dihitung dari atas.<br>Ketuk baris untuk memilih mulai dari slot mana.</div>
+    <details class="slotbox" ${session.showMap ? 'open' : ''}>
+      <summary><span>${ic('printer', 18)}</span><span class="grow"><b>Mulai dari slot ${next}</b><br><span class="muted">${N - next + 1} dari ${N} slot kosong di kertas ini</span></span><span class="btn ghost sm">Ubah</span></summary>
+      <div class="sheetmap" style="margin-top:12px">${slotRows}</div>
+      <div class="muted" style="margin-top:8px;text-align:center">Slot = tempat label di kolom tengah kertas, dihitung dari atas.<br>Ketuk baris untuk memilih mulai dari slot mana.</div>
+    </details>
     <h2>Pratinjau (${orders.length} label)</h2>
     <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${slotOf.has(o.id) ? `Slot ${slotOf.get(o.id)}` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
@@ -413,7 +429,8 @@ async function viewCetak(qs) {
   const warn = $$('#prev .label').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
 
-  $$('[data-slot]').forEach((b) => b.onclick = async () => { await saveShop({ nextSlot: Number(b.dataset.slot) }); session.pending = null; viewCetak(qs); });
+  $('.slotbox').ontoggle = (e) => { session.showMap = e.target.open; };
+  $$('[data-slot]').forEach((b) => b.onclick = async () => { await saveShop({ nextSlot: Number(b.dataset.slot) }); session.pending = null; session.showMap = false; viewCetak(qs); toast(`Mulai dari slot ${b.dataset.slot}.`); });
   $('#newsheet').onclick = async () => { await saveShop({ nextSlot: 1 }); session.pending = null; viewCetak(qs); };
   $('#print')?.addEventListener('click', async () => {
     const slots = chunk.map((_, i) => next + i);
