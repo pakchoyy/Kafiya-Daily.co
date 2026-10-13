@@ -1,6 +1,7 @@
 import * as db from './db.js';
 import { parseChat, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
 import { readImage } from './ocr.js';
+import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS } from './label.js';
 
@@ -77,7 +78,7 @@ function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}
   </header>
   <main>${hero ? '' : `<p class="eyebrow">${esc(EYEBROW[title] || '')}</p><h1 class="display">${esc(title)}</h1>`}${body}</main>
   <nav class="bottom">
-    ${[['pesanan', '', 'list', 'Pesanan'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Pengaturan']]
+    ${[['pesanan', '', 'list', 'Pesanan'], ['cetak', 'cetak', 'printer', 'Cetak'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Pengaturan']]
       .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
   </nav>`;
   bindInstall();
@@ -257,6 +258,7 @@ async function saveShopee() {
 // ---------- Cetak ----------
 async function viewCetak(qs) {
   const ids = (qs.get('ids') || '').split(',').map(Number).filter(Boolean);
+  if (!ids.length) return viewAntrian();
   if (!session || session.key !== ids.join(',')) session = { key: ids.join(','), printed: new Set(), pending: null };
   const orders = (await Promise.all(ids.map((i) => db.get('orders', i)))).filter(Boolean);
   if (!orders.length) return frame('Cetak', '<div class="empty">Pesanan tidak ditemukan.</div>', { back: true });
@@ -292,9 +294,10 @@ async function viewCetak(qs) {
     <div class="slots">${slotBtns}</div>
     <div class="muted" style="margin-top:6px">Ketuk slot untuk mengganti slot berikutnya.</div>
     ${remaining.length && !pend ? `<div class="card" style="margin-top:12px">${chunk.length} label dicetak di lembar ini (slot ${next}–${next + chunk.length - 1})${remaining.length > chunk.length ? `, sisa ${remaining.length - chunk.length} di lembar berikutnya` : ''}.</div>
-    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>` : ''}
+    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>
+    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG (A4)</button>` : ''}
     <button class="btn ghost block" id="newsheet">Lembar baru, mulai dari slot 1</button>
-    <p class="muted" style="text-align:center">Di dialog cetak pilih A4, skala 100%, tanpa margin/header.</p>`, { back: true });
+    <p class="muted" style="text-align:center">Di dialog cetak pilih A4, skala 100%, tanpa margin/header. JPG: cetak di A4 dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
   const warn = $$('#prev .label').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
@@ -307,6 +310,13 @@ async function viewCetak(qs) {
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
     session.pending = chunk; viewCetak(qs);
   });
+  $('#jpg')?.addEventListener('click', async () => {
+    const b = $('#jpg'); b.disabled = true; b.textContent = 'Membuat gambar…';
+    const blob = await sheetJPG({ slots: chunk.map((_, i) => next + i), orders: chunk }, shop);
+    downloadBlob(blob, `kafiya-label-${new Date().toISOString().slice(0, 10)}-slot${next}.jpg`);
+    toast('JPG diunduh. Cetak di A4 dengan ukuran asli / 100%.');
+    session.pending = chunk; viewCetak(qs);
+  });
   $('#redo')?.addEventListener('click', () => { session.pending = null; viewCetak(qs); });
   $('#confirm')?.addEventListener('click', async () => {
     for (const o of pend) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
@@ -314,6 +324,26 @@ async function viewCetak(qs) {
     await saveShop({ nextSlot: n > SLOTS ? 1 : n });
     session.pending = null; viewCetak(qs);
   });
+}
+
+// ---------- Antrian cetak (tab Cetak) ----------
+async function viewAntrian() {
+  const todo = (await db.all('orders')).filter((o) => !o.printed).sort((a, b) => a.id - b.id);
+  frame('Cetak', `<p class="muted" style="margin-top:-8px">Label yang belum dicetak. Centang yang mau dicetak, lalu tekan tombol di bawah.</p>
+    ${todo.length ? `<div class="row spread" style="margin:8px 0"><span class="muted">${todo.length} label menunggu</span><button class="btn ghost sm" id="all">Pilih semua</button></div>
+    ${todo.map((o) => `<label class="item" style="cursor:pointer">
+      <input type="checkbox" data-q="${o.id}" checked>
+      <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
+      <span class="grow"><span class="t" style="display:block">${esc(o.resi)}</span><span class="muted ell" style="display:block">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
+    </label>`).join('')}
+    <button class="btn block" id="go">${ic('printer', 20)} Lanjut ke cetak</button>`
+    : `<div class="empty">${ic('printer', 40)}<p>Semua label sudah dicetak.<br>Pesanan baru akan muncul di sini.</p></div>
+       <a class="btn ghost block" href="#/baru">${ic('plus', 18)} Pesanan baru</a>`}`, { nav: 'cetak' });
+  const boxes = $$('[data-q]');
+  const upd = () => { const n = boxes.filter((b) => b.checked).length; const g = $('#go'); if (g) { g.disabled = !n; g.innerHTML = `${ic('printer', 20)} Lanjut cetak ${n} label`; } };
+  boxes.forEach((b) => b.onchange = upd); upd();
+  $('#all')?.addEventListener('click', () => { const on = !boxes.every((b) => b.checked); boxes.forEach((b) => { b.checked = on; }); upd(); });
+  $('#go')?.addEventListener('click', () => { location.hash = `#/cetak?ids=${boxes.filter((b) => b.checked).map((b) => b.dataset.q).join(',')}`; });
 }
 
 // ---------- Pelanggan ----------
