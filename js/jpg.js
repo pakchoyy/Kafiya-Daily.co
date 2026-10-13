@@ -48,7 +48,8 @@ function drawLabel(ctx, o, shop, img) {
   ctx.fillText(courier, LABEL_W - P, P + 6); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
   fitLine(ctx, shop.name || '', P + lw + 1.5, P + 5.5, W - lw - cw - 4, 8, 6, true);
   ctx.beginPath(); ctx.moveTo(P, 12); ctx.lineTo(LABEL_W - P, 12); ctx.stroke();
-  fitLine(ctx, o.resi, LABEL_W / 2, 18.5, W, 15, 8, true, 'center');
+  if (o.resi) fitLine(ctx, o.resi, LABEL_W / 2, 18.5, W, 15, 8, true, 'center');
+  else { font(ctx, 8, false); ctx.fillText('No. resi:', P, 18.5); ctx.beginPath(); ctx.moveTo(P + 13, 18.8); ctx.lineTo(LABEL_W - P, 18.8); ctx.stroke(); }
   // penerima
   font(ctx, 10, true); ctx.fillText(o.name, P, 23.5, W);
   const nw = Math.min(W, ctx.measureText(o.name).width);

@@ -7,6 +7,7 @@ import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, SLOTS, 
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
+const APP_VERSION = 13; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -54,14 +55,14 @@ function editOrder(o, onDone) {
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
     <div class="row"><div class="grow"><label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}"></div>
     <div style="width:110px"><label class="f">Berat (kg)</label><input type="number" id="ew" step="0.1" value="${esc(o.weight)}"></div></div>` : ''}
-    <label class="f">No. resi</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
+    <label class="f">No. resi${o.type === 'shopee' ? '' : ' (boleh kosong)'}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
     $('#es', m).onclick = async () => {
       const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
       if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', weight: $('#ew', m).value.trim() });
-      if (!v.resi || (w && (!v.name || !v.address))) return toast('Nama, alamat, dan no. resi wajib diisi.');
+      if (w ? !v.name || !v.address : !v.resi) return toast(w ? 'Nama dan alamat wajib diisi.' : 'No. resi wajib diisi.');
       await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
     };
     $('#ed', m).onclick = async () => {
@@ -70,6 +71,7 @@ function editOrder(o, onDone) {
     };
   });
 }
+const resiText = (o) => (o.resi ? esc(o.resi) : '<span class="chip todo">Resi belum ada</span>');
 const orderBtns = (o) => `<button class="icon-btn" data-edit="${o.id}" aria-label="Ubah">${ic('edit', 18)}</button><button class="icon-btn" data-del="${o.id}" aria-label="Hapus">${ic('trash', 18)}</button>`;
 function bindOrderBtns(orders, refresh) {
   $$('[data-edit]').forEach((b) => b.onclick = (e) => { e.preventDefault(); editOrder(orders.find((o) => o.id === Number(b.dataset.edit)), refresh); });
@@ -169,7 +171,7 @@ async function viewPesanan() {
     ${orders.length ? orders.map((o) => `<div class="item">
       <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
-        <div class="t">${esc(o.resi)}</div>
+        <div class="t">${resiText(o)}</div>
         <div class="muted ell">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
       </a>
       <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
@@ -199,7 +201,7 @@ async function viewBaru() {
     <label class="f" for="courier">Ekspedisi</label>
     <select id="courier">${COURIERS.map((c) => `<option ${d.courier === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
     <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
-    <div class="row"><div class="grow"><label class="f" for="resi">No. resi</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
+    <div class="row"><div class="grow"><label class="f" for="resi">No. resi (boleh nanti)</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
     <div style="width:110px"><label class="f" for="weight">Berat (kg)</label><input type="number" id="weight" value="${esc(d.weight)}" step="0.1" min="0" inputmode="decimal"></div></div>
     <button class="btn block" id="go">Simpan & lanjut cetak</button>`;
   const shopee = `
@@ -296,7 +298,7 @@ async function saveWahana() {
   const d = draft;
   const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
   const name = d.name.trim(), address = d.address.trim(), resi = d.resi.replace(/\s+/g, '').toUpperCase();
-  if (!name || !address || !resi) return toast('Nama, alamat, dan no. resi wajib diisi.');
+  if (!name || !address) return toast('Nama dan alamat wajib diisi.');
   const phone = normalizePhone(d.phone) || d.phone.trim();
   const id = await db.put('orders', { type: 'wahana', name, phone, address, courier, resi, weight: d.weight.trim(), createdAt: new Date().toISOString(), printed: false });
   if (d.save) {
@@ -396,7 +398,7 @@ async function viewAntrian() {
     ${todo.map((o) => `<label class="item" style="cursor:pointer">
       <input type="checkbox" data-q="${o.id}" checked>
       <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
-      <span class="grow"><span class="t" style="display:block">${esc(o.resi)}</span><span class="muted ell" style="display:block">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
+      <span class="grow"><span class="t" style="display:block">${resiText(o)}</span><span class="muted ell" style="display:block">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
       ${orderBtns(o)}
     </label>`).join('')}
     <button class="btn block" id="go">${ic('printer', 20)} Lanjut ke cetak</button>`
@@ -468,7 +470,7 @@ async function viewPengaturan() {
       <button class="btn ghost block" id="rs">Restore dari file</button>
     </div>
     <h2>Aplikasi</h2><div class="install-slot">${installCard() || '<div class="banner ok">Aplikasi sudah terpasang.</div>'}</div>
-    <p class="muted" style="text-align:center">Semua data tersimpan di HP ini, tanpa server.</p>`, { nav: 'pengaturan' });
+    <p class="muted" style="text-align:center">Semua data tersimpan di HP ini, tanpa server.<br>Versi ${APP_VERSION}</p>`, { nav: 'pengaturan' });
 
   const showSt = () => { $('#v-dx').textContent = `${shop.dx} mm`; $('#v-dy').textContent = `${shop.dy} mm`; };
   showSt();

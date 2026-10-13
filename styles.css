@@ -133,6 +133,8 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label .lb-name { font-weight: 700; font-size: 8pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label .lb-exp { font-weight: 700; font-size: 11pt; letter-spacing: .3mm; }
 .label .lb-resi { font-weight: 700; font-size: 15pt; letter-spacing: .2mm; white-space: nowrap; overflow: hidden; text-align: center; flex: none; padding: 1.2mm 0; font-variant-numeric: tabular-nums; }
+.label .lb-resi.blank { font-size: 8pt; font-weight: 400; text-align: left; letter-spacing: 0; display: flex; gap: 2mm; padding: 2.5mm 0 1.5mm; }
+.label .lb-resi.blank::after { content: ''; flex: 1; border-bottom: .3mm solid #000; }
 .label .lb-to { font-size: 10pt; flex: none; }
 .label .lb-addr { flex: 1; min-height: 0; overflow: hidden; font-size: 8pt; margin-top: .8mm; }
 .label .lb-from { flex: none; display: flex; justify-content: space-between; gap: 2mm; font-size: 6.5pt; border-top: .3mm solid #000; padding-top: .8mm; margin-top: .8mm; }
