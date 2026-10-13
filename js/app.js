@@ -8,7 +8,7 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 21; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 22; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -106,6 +106,8 @@ const ICON = {
   printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   chev: '<path d="M9 18l6-6-6-6"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
@@ -170,12 +172,10 @@ async function viewPesanan() {
     ${remind}
     <h2>Riwayat pesanan</h2>
     ${orders.length ? `<div class="filters">
-      <input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}">
-      <div class="row" style="margin-top:8px">
-        <select id="fd">${[['all', 'Semua tanggal'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari terakhir'], ['day', 'Pilih tanggal…']].map(([v, l]) => `<option value="${v}" ${listFilter.date === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-        <select id="fs">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak']].map(([v, l]) => `<option value="${v}" ${listFilter.status === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      </div>
-      <input type="date" id="fday" value="${esc(listFilter.day)}" style="margin-top:8px;${listFilter.date === 'day' ? '' : 'display:none'}">
+      <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
+      <div class="chips">${[['all', 'Semua'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari'], ['day', listFilter.day ? fmtDay(listFilter.day) : 'Pilih tanggal']].map(([v, l]) => `<button class="pill ${listFilter.date === v ? 'on' : ''}" data-fd="${v}">${v === 'day' ? ic('calendar', 14) : ''}${esc(l)}</button>`).join('')}
+        <input type="date" id="fday" value="${esc(listFilter.day)}" tabindex="-1" aria-hidden="true"></div>
+      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
     </div>
     <div class="muted" id="fcount" style="margin:10px 2px"></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
@@ -197,12 +197,21 @@ async function viewPesanan() {
     bindOrderBtns(list, viewPesanan);
   };
   $('#fq').oninput = (e) => { listFilter.q = e.target.value; draw(); };
-  $('#fd').onchange = (e) => { listFilter.date = e.target.value; $('#fday').style.display = e.target.value === 'day' ? '' : 'none'; if (e.target.value === 'day' && !listFilter.day) $('#fday').showPicker?.(); draw(); };
-  $('#fday').onchange = (e) => { listFilter.day = e.target.value; draw(); };
-  $('#fs').onchange = (e) => { listFilter.status = e.target.value; draw(); };
+  const pick = (attr, key) => $$(`[data-${attr}]`).forEach((b) => b.onclick = () => {
+    if (attr === 'fd' && b.dataset.fd === 'day') { const d = $('#fday'); try { d.showPicker(); } catch { d.focus(); d.click(); } return; }
+    listFilter[key] = b.dataset[attr];
+    $$(`[data-${attr}]`).forEach((x) => x.classList.toggle('on', x === b)); draw();
+  });
+  pick('fd', 'date'); pick('fs', 'status');
+  $('#fday').onchange = (e) => {
+    listFilter.day = e.target.value; listFilter.date = e.target.value ? 'day' : 'all';
+    $$('[data-fd]').forEach((x) => x.classList.toggle('on', x.dataset.fd === listFilter.date));
+    const b = $('[data-fd="day"]'); b.innerHTML = `${ic('calendar', 14)}${esc(listFilter.day ? fmtDay(listFilter.day) : 'Pilih tanggal')}`; draw();
+  };
   draw();
 }
 
+const fmtDay = (k) => new Date(`${k}T00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 const listFilter = { q: '', date: 'all', day: '', status: 'all' };
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function filterOrders(orders, f) {
@@ -242,7 +251,7 @@ async function viewBaru() {
     <button class="btn block big" id="up">${ic('download', 20)} Upload screenshot / PDF</button>
     <input type="file" id="upf" accept="image/*,application/pdf" multiple hidden>
     <p class="muted" style="margin-top:8px">Bisa campur dan banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>PDF / screenshot label Shopee</b> jadi label Shopee. Tinggal cek hasilnya.</p>
-    ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn ghost sm" id="reset">Reset</button></div>
+    ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn danger sm" id="reset">${ic('trash', 16)} Kosongkan semua</button></div>
     ${items.map(card).join('')}
     <button class="btn ghost block" id="more">${ic('plus', 18)} Tambah file lagi</button>` : ''}
     <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
@@ -260,8 +269,7 @@ async function viewBaru() {
       <button class="btn ghost block" id="addm">${ic('plus', 18)} Tambahkan ke daftar</button>
     </details>
     ${items.length ? `<div class="row" style="margin-top:12px"><input type="checkbox" id="save" ${d.save ? 'checked' : ''}><label for="save">Simpan pelanggan (chat) untuk dipakai lagi</label></div>
-    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
-    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>` : ''}`, { back: true, nav: 'baru' });
+    <button class="btn block big" id="go">${ic('printer', 20)} Simpan & cetak ${items.length} label</button>` : ''}`, { back: true, nav: 'baru' });
 
   // daftar hasil
   $$('[data-i][data-k]').forEach((el) => {
@@ -270,7 +278,6 @@ async function viewBaru() {
   $$('[data-rm]').forEach((b) => b.onclick = () => { items.splice(Number(b.dataset.rm), 1); viewBaru(); });
   $('#save')?.addEventListener('change', (e) => { d.save = e.target.checked; });
   $('#go')?.addEventListener('click', () => saveItems(true));
-  $('#save1')?.addEventListener('click', () => saveItems(false));
 
   // upload otomatis
   $('#up').onclick = () => $('#upf').click();
@@ -284,18 +291,18 @@ async function viewBaru() {
   $('#upf').onchange = async (e) => {
     const files = [...e.target.files]; e.target.value = '';
     if (!files.length) return;
-    const btn = $('#up'); btn.disabled = true; btn.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    let n = 0;
-    try {
-      for (const [i, f] of files.entries()) {
-        const tag = files.length > 1 ? ` (${i + 1}/${files.length})` : '';
-        btn.textContent = `Membuka${tag}…`;
-        const got = await readAny(f, (m) => { btn.textContent = `${m}${tag}`; });
+    const prog = progress(files.length);
+    let n = 0, fail = 0;
+    for (const [i, f] of files.entries()) {
+      prog.file(i, f);
+      try {
+        const got = await readAny(f, (m) => prog.step(m));
         got.forEach((it) => { if (it.kind === 'wahana') it.courier = 'Wahana'; });
         items.push(...got); n += got.length;
-      }
-      toast(`${n} pesanan terbaca. Cek dulu ya.`);
-    } catch (err) { toast(err.message || 'Gagal membaca file.'); }
+      } catch (err) { fail++; console.error(err); }
+    }
+    prog.close();
+    toast(fail ? `${n} terbaca, ${fail} file gagal dibaca.` : `${n} pesanan terbaca. Cek dulu ya.`, fail ? 'warn' : 'ok');
     viewBaru();
   };
 
@@ -323,6 +330,35 @@ async function viewBaru() {
     items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier });
     Object.assign(d, { chat: '', name: '', phone: '', address: '', manualOpen: false });
     toast('Ditambahkan ke daftar.'); viewBaru();
+  };
+}
+
+// Jendela proses baca file: gambar kecil, "File 3 dari 7", langkah, dan bilah kemajuan.
+function progress(total) {
+  const o = document.createElement('div');
+  o.className = 'overlay center';
+  o.innerHTML = `<div class="dialog prog" role="status" aria-live="polite">
+    <div class="prog-thumb"><img alt=""><span class="spin"></span></div>
+    <h3 id="pt">Membaca file…</h3><p id="ps">Menyiapkan…</p>
+    <div class="bar"><i id="pb"></i></div><div class="muted" id="pc"></div></div>`;
+  document.body.append(o);
+  let idx = 0, url;
+  const pct = (sub) => { o.querySelector('#pb').style.width = `${Math.round(((idx + sub) / total) * 100)}%`; };
+  return {
+    file(i, f) {
+      idx = i; pct(0);
+      o.querySelector('#pt').textContent = total > 1 ? `File ${i + 1} dari ${total}` : 'Membaca file';
+      o.querySelector('#pc').textContent = f.name;
+      const img = o.querySelector('img');
+      if (url) URL.revokeObjectURL(url);
+      if (f.type.startsWith('image/')) { url = URL.createObjectURL(f); img.src = url; img.hidden = false; } else img.hidden = true;
+    },
+    step(msg) {
+      const m = /(\d+)%/.exec(msg);
+      o.querySelector('#ps').textContent = msg.replace(/\s*\d+%/, '');
+      pct(m ? 0.2 + 0.8 * (Number(m[1]) / 100) : 0.1);
+    },
+    close() { if (url) URL.revokeObjectURL(url); o.remove(); },
   };
 }
 
@@ -360,57 +396,68 @@ async function afterSave(ids, print) {
 async function viewCetak(qs) {
   const ids = (qs.get('ids') || '').split(',').map(Number).filter(Boolean);
   if (!ids.length) return viewAntrian();
-  if (!session || session.key !== ids.join(',')) session = { key: ids.join(','), printed: new Set(), pending: null };
+  if (!session || session.key !== ids.join(',')) session = { key: ids.join(','), pending: null };
   const orders = (await Promise.all(ids.map((i) => db.get('orders', i)))).filter(Boolean);
   if (!orders.length) return frame('Cetak', '<div class="empty">Pesanan tidak ditemukan.</div>', { back: true });
 
-  const remaining = orders.filter((o) => !session.printed.has(o.id));
   const logos = await logoSet(shop);
-  // Setiap cetak selalu di kertas baru, mulai dari atas.
-  const pend = session.pending;
-  const plan = pend || layout(remaining, 0, shop);
-  const posOf = new Map(plan.orders.map((o, i) => [o.id, plan.ys[i]]));
+  // Semua label sekaligus; jumlah lembar menyesuaikan. Tiap lembar selalu mulai dari atas.
+  const pages = session.pending || paginate(orders);
+  const pageOf = new Map(pages.flatMap((p, n) => p.orders.map((o) => [o.id, n + 1])));
+  const paperName = (PAPERS[shop.paper] || PAPERS.A4).dialog;
 
-  let status = '';
-  if (pend) {
-    status = `<div class="card"><b>Sudah tercetak dengan benar?</b>
-      <div class="muted">${pend.orders.length} label ditandai “Dicetak” setelah kamu konfirmasi.</div>
-      <div class="row" style="margin-top:10px"><button class="btn grow" id="confirm">Ya, tandai tercetak</button><button class="btn ghost" id="redo">Belum</button></div></div>`;
-  } else if (!remaining.length) {
-    status = `<div class="banner ok">Semua label sudah dicetak.</div>`;
-  } else if (session.printed.size) {
-    status = `<div class="banner">Kertas sebelumnya sudah penuh. Pasang stiker baru, lalu tekan “Lanjut cetak”. Sisa ${remaining.length} label.</div>`;
-  }
+  const status = session.pending ? `<div class="card confirm"><b>Sudah tercetak dengan benar?</b>
+      <div class="muted">${orders.length} label akan ditandai “Dicetak”.</div>
+      <div class="row" style="margin-top:10px"><button class="btn grow" id="confirm">Ya, tandai tercetak</button><button class="btn ghost" id="redo">Belum</button></div></div>` : '';
 
   frame('Cetak', `${status}
-    <h2>Pratinjau (${orders.length} label)</h2>
-    <div class="preview" id="prev">${orders.map((o, i) => `<div class="pv"><span class="pv-cap">Label ${i + 1}${posOf.has(o.id) ? '' : session.printed.has(o.id) ? ' · sudah dicetak' : ' · kertas berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
+    <div class="sumcard">
+      <div><b>${orders.length}</b><span>label</span></div>
+      <div><b>${pages.length}</b><span>lembar ${esc(paperName)}</span></div>
+    </div>
+    <h2>Pratinjau</h2>
+    <div class="preview" id="prev">${orders.map((o, i) => `<div class="pv"><span class="pv-cap">Label ${i + 1}${pages.length > 1 ? ` · lembar ${pageOf.get(o.id)}` : ''}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
-    ${plan.orders.length && !pend ? `<div class="card" style="margin-top:12px">${plan.orders.length} label dicetak di kertas ini${remaining.length > plan.orders.length ? `, sisa ${remaining.length - plan.orders.length} di kertas berikutnya` : ''}.</div>
-    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>
-    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
-    <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
+    ${session.pending ? '' : `<button class="btn block" id="print">${ic('printer', 20)} Cetak ${orders.length} label${pages.length > 1 ? ` (${pages.length} lembar)` : ''}</button>
+    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG${pages.length > 1 ? ` (${pages.length} file)` : ''}</button>`}
+    <p class="muted" style="text-align:center">Pasang ${pages.length > 1 ? `${pages.length} lembar` : 'kertas'} stiker baru. Di dialog cetak pilih <b>${esc(paperName)}</b>, skala 100%, tanpa margin/header.</p>`, { back: true, nav: 'cetak' });
 
   const warn = $$('#prev .label.wahana, #prev .label.shopee').filter((l) => !fitLabel(l)).length;
   if (warn) $('#warn').innerHTML = '<div class="banner">Alamat/resi sangat panjang dan sudah dikecilkan semampunya. Periksa hasil cetak, atau persingkat alamat.</div>';
 
   $('#print')?.addEventListener('click', async () => {
-    const bad = await printHTML(await sheetsHTML([plan], shop));
+    const bad = await printHTML(await sheetsHTML(pages, shop));
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
-    session.pending = plan; viewCetak(qs);
+    session.pending = pages; viewCetak(qs);
   });
   $('#jpg')?.addEventListener('click', async () => {
-    const b = $('#jpg'); b.disabled = true; b.textContent = 'Membuat gambar…';
-    const blob = await sheetJPG(plan, shop);
-    downloadBlob(blob, `kafiya-label-${new Date().toISOString().slice(0, 10)}.jpg`);
-    toast('JPG diunduh. Cetak dengan ukuran asli / 100%.');
-    session.pending = plan; viewCetak(qs);
+    const b = $('#jpg'); b.disabled = true;
+    const day = new Date().toISOString().slice(0, 10);
+    for (const [n, pg] of pages.entries()) {
+      b.textContent = `Membuat gambar ${n + 1}/${pages.length}…`;
+      downloadBlob(await sheetJPG(pg, shop), `kafiya-label-${day}${pages.length > 1 ? `-lembar${n + 1}` : ''}.jpg`);
+    }
+    toast(`${pages.length} JPG diunduh. Cetak dengan ukuran asli / 100%.`);
+    session.pending = pages; viewCetak(qs);
   });
   $('#redo')?.addEventListener('click', () => { session.pending = null; viewCetak(qs); });
   $('#confirm')?.addEventListener('click', async () => {
-    for (const o of pend.orders) { session.printed.add(o.id); await db.put('orders', { ...o, printed: true }); }
-    session.pending = null; viewCetak(qs);
+    for (const o of orders) await db.put('orders', { ...o, printed: true });
+    session.pending = null; toast(`${orders.length} label ditandai tercetak.`);
+    location.hash = '#/cetak';
   });
+}
+
+// Bagi label ke beberapa lembar; tiap lembar diisi dari atas sampai penuh.
+function paginate(orders) {
+  const pages = [];
+  let rest = orders;
+  while (rest.length) {
+    const pg = layout(rest, 0, shop);
+    if (!pg.orders.length) { pg.orders = [rest[0]]; pg.ys = [0]; } // label lebih tinggi dari kertas: tetap cetak sendiri
+    pages.push(pg); rest = rest.slice(pg.orders.length);
+  }
+  return pages;
 }
 
 // ---------- Antrian cetak (tab Cetak) ----------
