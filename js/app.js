@@ -8,7 +8,7 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 22; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 23; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -149,12 +149,33 @@ function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}
   bindInstall();
 }
 
+// Backup sekali tekan: unduh file JSON berisi semua data.
+async function doBackup() {
+  await saveShop({ lastBackup: new Date().toISOString() });
+  const blob = new Blob([JSON.stringify(await db.exportAll(), null, 1)], { type: 'application/json' });
+  downloadBlob(blob, `kafiya-backup-${new Date().toISOString().slice(0, 10)}.json`);
+  toast('Backup diunduh. Simpan file-nya di tempat aman.');
+}
+
+// Rekap 7 hari terakhir: batang per hari, ditumpuk Wahana/ekspedisi dan Shopee.
+function recapHTML(orders) {
+  const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(Date.now() - (6 - i) * 864e5); return { k: dayKey(d), d, w: 0, s: 0 }; });
+  const byKey = new Map(days.map((x) => [x.k, x]));
+  for (const o of orders) { const x = byKey.get(dayKey(new Date(o.createdAt))); if (x) x[o.type.startsWith('shopee') ? 's' : 'w']++; }
+  const max = Math.max(1, ...days.map((x) => x.w + x.s)), tw = days.reduce((a, x) => a + x.w, 0), ts = days.reduce((a, x) => a + x.s, 0);
+  return `<div class="recap"><div class="row spread"><b>7 hari terakhir</b><span class="muted">${tw + ts} paket</span></div>
+    <div class="bars">${days.map((x) => `<div title="${x.w + x.s} paket"><span>${x.w + x.s || ''}</span>
+      <div class="stack" style="height:${Math.round(((x.w + x.s) / max) * 56) + 2}px">${x.w ? `<i class="w" style="flex:${x.w}"></i>` : ''}${x.s ? `<i class="s" style="flex:${x.s}"></i>` : ''}</div>
+      <span>${x.d.toLocaleDateString('id-ID', { weekday: 'short' }).slice(0, 3)}</span></div>`).join('')}</div>
+    <div class="lg"><span class="lw">Wahana/ekspedisi ${tw}</span><span class="ls">Shopee ${ts}</span></div></div>`;
+}
+
 // ---------- Pesanan ----------
 async function viewPesanan() {
   const orders = (await db.all('orders')).sort((a, b) => b.id - a.id);
   const days = shop.lastBackup ? (Date.now() - new Date(shop.lastBackup)) / 864e5 : Infinity;
   const remind = orders.length && days > BACKUP_DAYS
-    ? `<div class="banner">${shop.lastBackup ? `Backup terakhir ${Math.floor(days)} hari lalu.` : 'Data belum pernah di-backup.'} <a href="#/pengaturan">Backup sekarang</a></div>` : '';
+    ? `<div class="banner row spread"><span>${shop.lastBackup ? `Backup terakhir ${Math.floor(days)} hari lalu.` : 'Data belum pernah di-backup.'}</span><button class="btn sm" id="bknow">${ic('download', 16)} Backup</button></div>` : '';
   const todo = orders.filter((o) => !o.printed).length;
   const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
   frame('Pesanan', `<section class="hero">
@@ -170,6 +191,7 @@ async function viewPesanan() {
     </div>
     <div class="install-slot">${installCard()}</div>
     ${remind}
+    ${orders.length ? recapHTML(orders) : ''}
     <h2>Riwayat pesanan</h2>
     ${orders.length ? `<div class="filters">
       <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
@@ -177,10 +199,11 @@ async function viewPesanan() {
         <input type="date" id="fday" value="${esc(listFilter.day)}" tabindex="-1" aria-hidden="true"></div>
       <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
     </div>
-    <div class="muted" id="fcount" style="margin:10px 2px"></div>
+    <div class="row spread" style="margin:10px 2px"><span class="muted" id="fcount"></span><button class="btn ghost sm" id="selt">${sel.on ? 'Selesai' : 'Pilih'}</button></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
+  $('#bknow')?.addEventListener('click', async () => { await doBackup(); viewPesanan(); });
   if (!orders.length) return;
-  const row = (o) => `<div class="item">
+  const row = (o) => `<div class="item ${sel.on ? 'selmode' : ''}">${sel.on ? `<input type="checkbox" class="sel" data-sel="${o.id}" ${sel.ids.has(o.id) ? 'checked' : ''} aria-label="Pilih">` : ''}
       <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
         <div class="t">${resiText(o)}</div>
@@ -195,7 +218,29 @@ async function viewPesanan() {
     $('#fcount').textContent = list.length === orders.length ? `${orders.length} pesanan` : `${list.length} dari ${orders.length} pesanan`;
     $('#olist').innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><p>Tidak ada pesanan yang cocok.</p></div>';
     bindOrderBtns(list, viewPesanan);
+    $$('[data-sel]').forEach((c) => c.onchange = () => { const id = Number(c.dataset.sel); c.checked ? sel.ids.add(id) : sel.ids.delete(id); bar(); });
+    bar();
   };
+  // Mode pilih banyak: centang beberapa pesanan lalu cetak / tandai / hapus sekaligus.
+  const bar = () => {
+    document.querySelector('.selbar')?.remove();
+    if (!sel.on) return;
+    const el = document.createElement('div'); el.className = 'selbar';
+    el.innerHTML = `<b>${sel.ids.size} dipilih</b><button class="btn" data-act="all">Semua</button><button class="btn" data-act="print" ${sel.ids.size ? '' : 'disabled'}>Cetak</button><button class="btn" data-act="done" ${sel.ids.size ? '' : 'disabled'}>Tandai</button><button class="btn red" data-act="del" ${sel.ids.size ? '' : 'disabled'} aria-label="Hapus">${ic('trash', 16)}</button>`;
+    app.append(el);
+    el.onclick = async (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      const chosen = orders.filter((o) => sel.ids.has(o.id));
+      if (act === 'all') { filterOrders(orders, listFilter).forEach((o) => sel.ids.add(o.id)); draw(); }
+      if (act === 'print') { const ids = chosen.map((o) => o.id); sel.on = false; sel.ids.clear(); location.hash = `#/cetak?ids=${ids.join(',')}`; }
+      if (act === 'done') { for (const o of chosen) await db.put('orders', { ...o, printed: true }); toast(`${chosen.length} ditandai tercetak.`); sel.ids.clear(); viewPesanan(); }
+      if (act === 'del' && await ask(`Hapus ${chosen.length} pesanan?`, 'Tidak bisa dibatalkan.', { ok: 'Hapus', danger: true })) {
+        for (const o of chosen) await db.del('orders', o.id);
+        toast(`${chosen.length} pesanan dihapus.`); sel.ids.clear(); sel.on = false; viewPesanan();
+      }
+    };
+  };
+  $('#selt').onclick = () => { sel.on = !sel.on; sel.ids.clear(); $('#selt').textContent = sel.on ? 'Selesai' : 'Pilih'; draw(); };
   $('#fq').oninput = (e) => { listFilter.q = e.target.value; draw(); };
   const pick = (attr, key) => $$(`[data-${attr}]`).forEach((b) => b.onclick = () => {
     if (attr === 'fd' && b.dataset.fd === 'day') { const d = $('#fday'); try { d.showPicker(); } catch { d.focus(); d.click(); } return; }
@@ -212,6 +257,7 @@ async function viewPesanan() {
 }
 
 const fmtDay = (k) => new Date(`${k}T00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+const sel = { on: false, ids: new Set() };
 const listFilter = { q: '', date: 'all', day: '', status: 'all' };
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function filterOrders(orders, f) {
@@ -235,17 +281,18 @@ function filterOrders(orders, f) {
 async function viewBaru() {
   const customers = (await db.all('customers')).sort((a, b) => a.name.localeCompare(b.name));
   const d = draft, items = d.items;
+  const dupe = dupeChecker(await db.all('orders'), items);
   const courierSel = (i, val) => `<select data-i="${i}" data-k="courier">${COURIERS.filter((c) => c !== 'Lainnya').concat(val && !COURIERS.includes(val) ? [val] : []).map((c) => `<option ${val === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
   const card = (it, i) => it.kind === 'shopee'
     ? `<div class="card item-card"><div class="row spread"><span class="chip">Shopee · label asli</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
         <img class="sp-thumb" src="${it.img}" alt="">
         <label class="f">No. resi</label><input type="text" data-i="${i}" data-k="resi" value="${esc(it.resi)}" placeholder="Tidak terbaca, isi manual" autocapitalize="characters">
-        <div class="muted" style="margin-top:4px">Di kertas: 7 × ${cm(it.h)} cm</div></div>`
+        <div class="muted" style="margin-top:4px">Di kertas: 7 × ${cm(it.h)} cm</div>${dupe(it, i)}</div>`
     : `<div class="card item-card"><div class="row spread"><span class="chip">Pesanan ${i + 1} · chat</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
         <label class="f">Nama penerima</label><input type="text" data-i="${i}" data-k="name" value="${esc(it.name)}">
         <label class="f">No. HP</label><input type="tel" data-i="${i}" data-k="phone" value="${esc(it.phone)}" placeholder="Tidak ada di chat, isi kalau perlu">
         <label class="f">Alamat</label><textarea data-i="${i}" data-k="address" style="min-height:80px">${esc(it.address)}</textarea>
-        <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}</div>`;
+        <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}${dupe(it, i)}</div>`;
 
   frame('Pesanan baru', `
     <button class="btn block big" id="up">${ic('download', 20)} Upload screenshot / PDF</button>
@@ -285,13 +332,34 @@ async function viewBaru() {
   // Tombol + di menu bawah: di halaman ini langsung menambah file ke daftar.
   $('nav .fab').onclick = (e) => { e.preventDefault(); $('#upf').click(); };
   $('#reset')?.addEventListener('click', async () => {
-    if (!await ask('Kosongkan daftar?', `${items.length} pesanan yang belum disimpan akan dibuang.`, { ok: 'Reset', danger: true })) return;
+    if (!await ask('Kosongkan semua?', `${items.length} pesanan di daftar ini (belum disimpan) akan dibuang.`, { ok: 'Kosongkan', danger: true })) return;
     items.length = 0; viewBaru(); toast('Daftar dikosongkan.');
   });
-  $('#upf').onchange = async (e) => {
-    const files = [...e.target.files]; e.target.value = '';
-    if (!files.length) return;
-    const prog = progress(files.length);
+  $('#upf').onchange = (e) => { const files = [...e.target.files]; e.target.value = ''; handleFiles(files); };
+  bindManual(d, customers);
+  // File yang dibagikan dari aplikasi lain (Bagikan → Kafiya) disimpan service worker di cache.
+  if (location.hash.includes('shared=1')) {
+    history.replaceState(null, '', '#/baru');
+    takeShared().then((files) => files.length && handleFiles(files));
+  }
+}
+
+async function takeShared() {
+  if (!('caches' in window)) return [];
+  const c = await caches.open('kafiya-share'), keys = await c.keys(), files = [];
+  for (const k of keys) {
+    const r = await c.match(k);
+    files.push(new File([await r.blob()], decodeURIComponent(r.headers.get('x-name') || 'file'), { type: r.headers.get('content-type') || '' }));
+    await c.delete(k);
+  }
+  return files;
+}
+
+async function handleFiles(files) {
+  if (!files.length) return;
+  const items = draft.items;
+  const prog = progress(files.length);
+  {
     let n = 0, fail = 0;
     for (const [i, f] of files.entries()) {
       prog.file(i, f);
@@ -304,9 +372,11 @@ async function viewBaru() {
     prog.close();
     toast(fail ? `${n} terbaca, ${fail} file gagal dibaca.` : `${n} pesanan terbaca. Cek dulu ya.`, fail ? 'warn' : 'ok');
     viewBaru();
-  };
+  }
+}
 
-  // isi manual
+// Isi manual / tempel teks chat, lalu tambahkan ke daftar.
+function bindManual(d, customers) {
   const bind = (id, key) => { const el = $('#' + id); if (el) el.oninput = () => { d[key] = el.value; }; };
   ['chat', 'name', 'phone', 'address', 'other'].forEach((k) => bind(k, k));
   $('.manual').ontoggle = (e) => { d.manualOpen = e.target.open; };
@@ -327,7 +397,7 @@ async function viewBaru() {
   $('#addm').onclick = () => {
     if (!d.name.trim() || !d.address.trim()) return toast('Nama dan alamat wajib diisi.');
     const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
-    items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier });
+    d.items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier });
     Object.assign(d, { chat: '', name: '', phone: '', address: '', manualOpen: false });
     toast('Ditambahkan ke daftar.'); viewBaru();
   };
@@ -362,9 +432,27 @@ function progress(total) {
   };
 }
 
+// Tandai pesanan yang mirip/dobel: resi Shopee sama, atau nama + alamat sama (riwayat maupun dalam daftar).
+function dupeChecker(existing, items) {
+  const keyOf = (x) => (x.kind === 'shopee' || x.type?.startsWith('shopee') ? `r:${(x.resi || '').toUpperCase()}` : `w:${(x.name || '').trim().toLowerCase()}|${(x.address || '').trim().toLowerCase()}`);
+  const seen = new Map(existing.filter((o) => o.resi || o.name).map((o) => [keyOf(o), o]));
+  const fn = (it, i) => {
+    const k = keyOf(it);
+    if (k === 'r:' || k === 'w:|') return '';
+    const old = seen.get(k), twin = items.findIndex((x, j) => j < i && keyOf(x) === k);
+    if (old) return `<div class="dupe">${ic('printer', 14)} Sudah pernah disimpan ${fmtDate(old.createdAt)}${old.printed ? ' (sudah dicetak)' : ''}</div>`;
+    if (twin >= 0) return `<div class="dupe">Sama dengan pesanan ${twin + 1} di daftar ini</div>`;
+    return '';
+  };
+  fn.count = () => items.filter((it, i) => fn(it, i)).length;
+  return fn;
+}
+
 async function saveItems(print) {
   const items = draft.items;
   if (!items.length) return toast('Belum ada pesanan.');
+  const dn = dupeChecker(await db.all('orders'), items).count();
+  if (dn && !await ask(`${dn} pesanan tampak dobel`, 'Pesanan bertanda kuning sudah pernah disimpan atau muncul dua kali. Tetap simpan semuanya?', { ok: 'Tetap simpan' })) return;
   const bad = items.findIndex((it) => (it.kind === 'wahana' ? !it.name?.trim() || !it.address?.trim() : false));
   if (bad >= 0) return toast(`Pesanan ${bad + 1}: nama dan alamat wajib diisi.`);
   const ids = [], cs = await db.all('customers'), now = new Date().toISOString();
@@ -515,6 +603,9 @@ async function viewPengaturan() {
       <label class="f" for="sn" style="margin-top:0">Nama toko</label><input type="text" id="sn" value="${esc(shop.name)}">
       <label class="f" for="sp">No. HP pengirim (tercetak di label)</label><input type="tel" id="sp" value="${esc(shop.phone)}" inputmode="tel">
     </div>
+    <h2>Tampilan</h2><div class="card">
+      <div class="chips" style="margin:0;padding:0">${[['auto', 'Ikuti HP'], ['light', 'Terang'], ['dark', 'Gelap']].map(([v, l]) => `<button class="pill ${(shop.theme || 'auto') === v ? 'on' : ''}" data-theme="${v}">${l}</button>`).join('')}</div>
+    </div>
     <h2>Logo</h2><div class="card">
       <div class="logo-prev"><img src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="Logo"></div>
       <input type="file" id="lf" accept="image/*" hidden>
@@ -547,6 +638,7 @@ async function viewPengaturan() {
   $('#sn').onchange = (e) => saveShop({ name: e.target.value.trim() || 'Kafiya Daily.co' });
   $('#sp').onchange = (e) => saveShop({ phone: e.target.value.trim() });
   $('#bw').onchange = (e) => saveShop({ bw: e.target.checked });
+  $$('[data-theme]').forEach((b) => b.onclick = async () => { await saveShop({ theme: b.dataset.theme }); applyTheme(); viewPengaturan(); });
   $('#pp').onchange = async (e) => { await saveShop({ paper: e.target.value }); viewPengaturan(); toast(`Kertas: ${PAPERS[e.target.value].name}`); };
   $('#cl').onchange = (e) => saveShop({ cutLines: e.target.checked });
   $$('[data-st]').forEach((b) => b.onclick = async () => {
@@ -562,15 +654,7 @@ async function viewPengaturan() {
   };
   $('#lx')?.addEventListener('click', async () => { await saveShop({ logo: null }); viewPengaturan(); });
   $('#test').onclick = () => printHTML(testSheetHTML(shop));
-  $('#bk').onclick = async () => {
-    await saveShop({ lastBackup: new Date().toISOString() });
-    const blob = new Blob([JSON.stringify(await db.exportAll(), null, 1)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `kafiya-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    viewPengaturan(); toast('Backup diunduh.');
-  };
+  $('#bk').onclick = async () => { await doBackup(); viewPengaturan(); };
   $('#rs').onclick = () => $('#rf').click();
   $('#rf').onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -587,6 +671,7 @@ async function viewPengaturan() {
 // ---------- router ----------
 async function render() {
   document.getElementById('toast').classList.remove('show');
+  document.querySelector('.selbar')?.remove(); sel.on = false; sel.ids.clear();
   const [path, q] = location.hash.slice(1).split('?');
   const qs = new URLSearchParams(q || '');
   try {
@@ -602,8 +687,17 @@ async function render() {
   }
 }
 
+function applyTheme() {
+  const t = shop.theme || 'auto';
+  if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t;
+  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#23201D' : '#FAF9F7');
+}
+
 (async () => {
   shop = await db.getShop();
+  applyTheme();
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
   window.addEventListener('hashchange', render);
   render();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
