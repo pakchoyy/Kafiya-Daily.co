@@ -33,3 +33,17 @@ test('daftar resi', () => {
   const r = parseResiList('spx123456789\n spx123456789 \n\nab1');
   assert.deepEqual(r.map((x) => [x.resi, x.dup, x.odd]), [['SPX123456789', false, false], ['SPX123456789', true, false], ['AB1', false, true]]);
 });
+
+import { cleanOcr, extractResi } from '../js/parser.js';
+
+test('OCR WhatsApp dibersihkan lalu dirapikan', () => {
+  const raw = 'Hari ini\nNama: Dewi Lestari 10.21\nHp: 0857 1234 5678 10.21 ✓✓\nAlamat: Jl. Melati 3, Depok 10.22\n10.22\nKetik pesan';
+  const r = parseChat(cleanOcr(raw));
+  assert.equal(r.name, 'Dewi Lestari');
+  assert.equal(r.phone, '085712345678');
+  assert.equal(r.address, 'Jl. Melati 3, Depok');
+});
+
+test('ambil resi dari teks OCR', () => {
+  assert.deepEqual(extractResi('No. Resi: SPXID0412345678\nspxid0412345679 HP 081234567890\nTotal 125000'), ['SPXID0412345678', 'SPXID0412345679']);
+});

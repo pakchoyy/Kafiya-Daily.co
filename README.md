@@ -6,6 +6,7 @@ dari HP Android. Rincian ada di PRD.
 - **Mode Wahana**: tempel chat WhatsApp → dirapikan jadi nama/HP/alamat → ekspedisi, resi, berat → label lengkap.
 - **Mode Shopee**: tempel daftar resi (satu per baris) → label logo + resi besar.
 - Slot 1–5 di kolom tengah A4, otomatis lanjut/minta ganti kertas; geser posisi cetak per 1 mm; halaman tes cetak.
+- OCR dari screenshot (Tesseract.js, di HP, gratis tanpa API key) untuk chat WhatsApp dan daftar resi.
 - Data (IndexedDB) hanya di HP; backup/restore ke file JSON; jalan offline setelah dipasang.
 
 ## Menjalankan

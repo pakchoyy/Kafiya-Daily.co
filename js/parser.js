@@ -66,6 +66,23 @@ export function parseChat(raw) {
   return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address };
 }
 
+// Bersihkan teks hasil OCR screenshot WhatsApp: jam, centang, dan baris tombol aplikasi.
+export function cleanOcr(raw) {
+  return String(raw || '').split(/\r?\n/)
+    .map((l) => l.replace(/[|]/g, ' ').replace(/\s+\d{1,2}[.:]\d{2}\s*[✓√vV/\\]*\s*$/, '').trim())
+    .filter((l) => l && !/^\d{1,2}[.:]\d{2}$/.test(l) && !/^(ketik pesan|pesan|hari ini|kemarin|online|mengetik)/i.test(l))
+    .join('\n');
+}
+
+// Ambil kandidat no. resi dari teks OCR: kode huruf/angka 10–25 karakter yang mengandung angka.
+export function extractResi(raw) {
+  const out = [];
+  for (const m of String(raw || '').toUpperCase().matchAll(/\b[A-Z0-9]{10,25}\b/g)) {
+    if (/\d{5}/.test(m[0]) && !/^0?8\d{8,12}$/.test(m[0]) && !out.includes(m[0])) out.push(m[0]);
+  }
+  return out;
+}
+
 // Daftar resi Shopee: satu per baris, huruf besar, tanpa spasi.
 export function parseResiList(raw) {
   const seen = new Set();
