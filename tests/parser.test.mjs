@@ -79,3 +79,7 @@ test('Code128: semua pola 11 modul (stop 13) dan bisa didekode kembali', () => {
   assert.equal(syms.at(-1), check);
   assert.equal(new Set(PATTERNS).size, 107);
 });
+
+test('no. pesanan Shopee dan no. HP tidak dianggap resi', () => {
+  assert.deepEqual(extractResi('No.Pesanan: 261013G3KJRQC8\n6285600410357'), []);
+});
