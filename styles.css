@@ -107,6 +107,10 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label.img { padding: 1mm; }
 .label.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .tabs.sub button { min-height: 40px; font-size: 11px; }
+.item-card .sp-thumb { width: 100%; max-height: 300px; object-fit: contain; background: #fff; border: 1px solid var(--line); margin-top: 8px; }
+.manual { background: var(--card); border: 1px solid var(--line); padding: 12px 14px; margin-top: 16px; }
+.manual summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-weight: 500; min-height: 32px; }
+.manual summary::-webkit-details-marker { display: none; }
 .spitem img { width: 100%; max-height: 260px; object-fit: contain; background: #fff; border: 1px solid var(--line); }
 .spitem input { flex: 1; }
 .sheetmap { max-width: 300px; margin: 0 auto; background: #fff; border: 1px solid var(--line); padding: 8px; display: grid; gap: 4px; box-shadow: 0 6px 20px rgba(62,54,48,.06); }

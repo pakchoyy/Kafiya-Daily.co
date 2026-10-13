@@ -1,19 +1,18 @@
 import * as db from './db.js';
-import { parseChat, parseChatOcr, parseResiList, normalizePhone, cleanOcr, extractResi } from './parser.js';
-import { readImage, readBarcodes } from './ocr.js';
+import { parseChat, normalizePhone } from './parser.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, paper, layout, usedMM, labelH } from './label.js';
-import { readShopeeLabels } from './shopee.js';
+import { readAny } from './shopee.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 19; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 20; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
-let draft = { imgs: [], shopeeKind: 'asli', mode: 'wahana', chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
+let draft = { items: [], manualOpen: false, chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
 let session = null; // { ids, printed:Set, pending:[orders]|null }
 
 const $ = (s, r = app) => r.querySelector(s);
@@ -183,192 +182,122 @@ async function viewPesanan() {
 }
 
 // ---------- Pesanan baru ----------
+// Satu halaman untuk semua: upload screenshot/PDF (dideteksi otomatis Shopee atau chat WA), atau isi manual.
+// Hasilnya masuk daftar `draft.items` yang bisa diedit sebelum disimpan.
 async function viewBaru() {
   const customers = (await db.all('customers')).sort((a, b) => a.name.localeCompare(b.name));
-  const d = draft;
-  const wahana = `
-    ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
-      <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
-    <button class="btn block" id="shot">${ic('camera', 18)} Upload screenshot chat</button>
-    <input type="file" id="shotf" accept="image/*" multiple hidden>
-    <label class="f" for="chat">Atau tempel teks chat WhatsApp</label>
-    <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
-    <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
-    <h2>Periksa & koreksi</h2>
-    <label class="f" for="name">Nama penerima</label><input type="text" id="name" value="${esc(d.name)}" autocomplete="off">
-    <label class="f" for="phone">No. HP</label><input type="tel" id="phone" value="${esc(d.phone)}" inputmode="tel">
-    <label class="f" for="address">Alamat</label><textarea id="address">${esc(d.address)}</textarea>
-    <div class="row" style="margin-top:12px"><input type="checkbox" id="save" ${d.save ? 'checked' : ''}><label for="save">Simpan pelanggan ini</label></div>
-    <h2>Pengiriman</h2>
-    <label class="f" for="courier">Ekspedisi</label>
-    <select id="courier">${COURIERS.map((c) => `<option ${d.courier === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
-    <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
-    <div class="row"><div class="grow"><label class="f" for="resi">No. resi (catatan, tidak dicetak)</label><input type="text" id="resi" value="${esc(d.resi)}" autocapitalize="characters" autocomplete="off"></div>
-    <div style="width:110px"><label class="f" for="weight">Berat (kg)</label><input type="number" id="weight" value="${esc(d.weight)}" step="0.1" min="0" inputmode="decimal"></div></div>
+  const d = draft, items = d.items;
+  const courierSel = (i, val) => `<select data-i="${i}" data-k="courier">${COURIERS.filter((c) => c !== 'Lainnya').concat(val && !COURIERS.includes(val) ? [val] : []).map((c) => `<option ${val === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>`;
+  const card = (it, i) => it.kind === 'shopee'
+    ? `<div class="card item-card"><div class="row spread"><span class="chip">Shopee · label asli</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+        <img class="sp-thumb" src="${it.img}" alt="">
+        <label class="f">No. resi</label><input type="text" data-i="${i}" data-k="resi" value="${esc(it.resi)}" placeholder="Tidak terbaca, isi manual" autocapitalize="characters">
+        <div class="muted" style="margin-top:4px">Di kertas: 7 × ${cm(it.h)} cm</div></div>`
+    : `<div class="card item-card"><div class="row spread"><span class="chip">Pesanan ${i + 1} · chat</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+        <label class="f">Nama penerima</label><input type="text" data-i="${i}" data-k="name" value="${esc(it.name)}">
+        <label class="f">No. HP</label><input type="tel" data-i="${i}" data-k="phone" value="${esc(it.phone)}" placeholder="Tidak ada di chat, isi kalau perlu">
+        <label class="f">Alamat</label><textarea data-i="${i}" data-k="address" style="min-height:80px">${esc(it.address)}</textarea>
+        <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}</div>`;
+
+  frame('Pesanan baru', `
+    <button class="btn block big" id="up">${ic('download', 20)} Upload screenshot / PDF</button>
+    <input type="file" id="upf" accept="image/*,application/pdf" multiple hidden>
+    <p class="muted" style="margin-top:8px">Bisa campur dan banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>PDF / screenshot label Shopee</b> jadi label Shopee. Tinggal cek hasilnya.</p>
+    ${items.length ? `<h2>${items.length} pesanan siap</h2>${items.map(card).join('')}` : ''}
+    <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
+      ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
+        <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
+      <label class="f" for="chat">Tempel teks chat</label>
+      <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
+      <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
+      <label class="f" for="name">Nama penerima</label><input type="text" id="name" value="${esc(d.name)}" autocomplete="off">
+      <label class="f" for="phone">No. HP</label><input type="tel" id="phone" value="${esc(d.phone)}" inputmode="tel">
+      <label class="f" for="address">Alamat</label><textarea id="address">${esc(d.address)}</textarea>
+      <label class="f" for="courier">Ekspedisi</label>
+      <select id="courier">${COURIERS.map((c) => `<option ${d.courier === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
+      <button class="btn ghost block" id="addm">${ic('plus', 18)} Tambahkan ke daftar</button>
+    </details>
+    ${items.length ? `<div class="row" style="margin-top:12px"><input type="checkbox" id="save" ${d.save ? 'checked' : ''}><label for="save">Simpan pelanggan (chat) untuk dipakai lagi</label></div>
     <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
-    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`;
-  const asli = d.shopeeKind !== 'ringkas';
-  const shopeeAsli = `
-    <button class="btn block" id="sp">${ic('download', 18)} Upload PDF / screenshot label Shopee</button>
-    <input type="file" id="spf" accept="application/pdf,image/*" multiple hidden>
-    <p class="muted" style="margin-top:8px">Bisa pilih banyak file sekaligus. Kotak label dipotong otomatis dan dikecilkan ke lebar 7 cm (tabel produk tidak ikut).</p>
-    <div id="splist">${d.imgs.map((it, i) => `<div class="card spitem">
-      <img src="${it.img}" alt="">
-      <div class="row" style="margin-top:8px"><input type="text" data-sp="${i}" value="${esc(it.resi)}" placeholder="No. resi (tidak terbaca)" autocapitalize="characters"><button class="icon-btn" data-sprm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
-      <div class="muted" style="margin-top:4px">Tinggi di kertas ${cm(it.h)} cm</div></div>`).join('')}</div>
-    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>`;
-  const shopee = `
-    <div class="tabs sub" style="margin-bottom:14px"><button data-k="asli" class="${asli ? 'on' : ''}">Label asli Shopee</button><button data-k="ringkas" class="${asli ? '' : 'on'}">Label ringkas</button></div>
-    ${asli ? shopeeAsli : `
-    <label class="f" for="resilist">Tempel daftar resi (satu per baris)</label>
-    <textarea id="resilist" style="min-height:140px;font-variant-numeric:tabular-nums" autocapitalize="characters">${esc(d.resiList)}</textarea>
-    <button class="btn ghost block" id="shot" style="margin-top:8px">${ic('camera', 18)} Upload foto / screenshot resi</button>
-    <input type="file" id="shotf" accept="image/*" multiple hidden>
-    <div id="resisum"></div>
-    <div class="row" style="margin-top:14px"><button class="btn ghost grow" id="save1">Simpan</button><button class="btn grow" id="go">${ic('printer', 18)} Simpan & cetak</button></div>
-    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>`}`;
-  frame('Pesanan baru', `<div class="tabs"><button data-m="wahana" class="${d.mode === 'wahana' ? 'on' : ''}">Wahana</button><button data-m="shopee" class="${d.mode === 'shopee' ? 'on' : ''}">Shopee</button></div>
-    ${d.mode === 'wahana' ? wahana : shopee}`, { back: true, nav: 'baru' });
+    <p class="muted" style="text-align:center;margin-top:8px">“Simpan” untuk lanjut tambah pesanan; labelnya menunggu di tab Cetak.</p>` : ''}`, { back: true, nav: 'baru' });
 
-  $$('.tabs button[data-m]').forEach((b) => b.onclick = () => { d.mode = b.dataset.m; viewBaru(); });
-  $$('.tabs button[data-k]').forEach((b) => b.onclick = () => { d.shopeeKind = b.dataset.k; viewBaru(); });
-  const bind = (id, key, fn) => { const el = $('#' + id); if (el) el.oninput = () => { d[key] = el.type === 'checkbox' ? el.checked : el.value; fn?.(); }; };
+  // daftar hasil
+  $$('[data-i][data-k]').forEach((el) => {
+    el.oninput = el.onchange = () => { items[el.dataset.i][el.dataset.k] = el.dataset.k === 'resi' ? el.value.replace(/\s+/g, '').toUpperCase() : el.value; };
+  });
+  $$('[data-rm]').forEach((b) => b.onclick = () => { items.splice(Number(b.dataset.rm), 1); viewBaru(); });
+  $('#save')?.addEventListener('change', (e) => { d.save = e.target.checked; });
+  $('#go')?.addEventListener('click', () => saveItems(true));
+  $('#save1')?.addEventListener('click', () => saveItems(false));
 
-  if (d.mode === 'wahana') {
-    ['chat', 'name', 'phone', 'address', 'resi', 'weight'].forEach((k) => bind(k, k));
-    bind('save', 'save');
-    bind('other', 'other');
-    $('#courier').onchange = (e) => { d.courier = e.target.value; $('#other').style.display = d.courier === 'Lainnya' ? '' : 'none'; };
-    $('#cust')?.addEventListener('change', (e) => {
-      const c = customers.find((x) => x.id === Number(e.target.value));
-      if (!c) return;
-      Object.assign(d, { name: c.name, phone: c.phone, address: c.address });
-      ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
-    });
-    ocrButton(async (files) => {
-      if (files.length > 1) return batchWahana(await ocrAll(files));
-      const raw = (await ocrAll(files)).join('\n'), t = cleanOcr(raw);
-      if (!t) return toast('Tidak ada teks terbaca.');
-      d.chat = t; $('#chat').value = t;
-      Object.assign(d, parseChatOcr(raw));
-      ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
-      toast(d.phone ? 'Sudah dibaca. Periksa dulu ya.' : 'Sudah dibaca. No. HP tidak ada di screenshot, isi manual ya.');
-      $('#name').scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
-    $('#tidy').onclick = () => {
-      const r = parseChat(d.chat);
-      if (!r.name && !r.phone && !r.address) return toast('Tidak ada yang bisa dirapikan.');
-      Object.assign(d, r);
-      ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
-      toast('Sudah dirapikan. Periksa dulu ya.');
-    };
-    $('#go').onclick = () => saveWahana(true);
-    $('#save1').onclick = () => saveWahana(false);
-  } else if (asli) {
-    $$('[data-sp]').forEach((el) => el.oninput = () => { d.imgs[el.dataset.sp].resi = el.value.replace(/\s+/g, '').toUpperCase(); });
-    $$('[data-sprm]').forEach((b) => b.onclick = () => { d.imgs.splice(Number(b.dataset.sprm), 1); viewBaru(); });
-    $('#sp').onclick = () => $('#spf').click();
-    $('#spf').onchange = async (e) => {
-      const files = [...e.target.files]; e.target.value = '';
-      if (!files.length) return;
-      const btn = $('#sp'); btn.disabled = true;
-      try {
-        for (const [i, f] of files.entries()) {
-          btn.textContent = `Membuka ${i + 1}/${files.length}…`;
-          d.imgs.push(...await readShopeeLabels(f, (m) => { btn.textContent = `${m} ${i + 1}/${files.length}`; }));
-        }
-        toast(`${d.imgs.length} label siap. Periksa no. resinya.`);
-      } catch (err) { toast(err.message || 'Gagal membaca file.'); }
-      viewBaru();
-    };
-    $('#go').onclick = () => saveShopeeImg(true);
-    $('#save1').onclick = () => saveShopeeImg(false);
-  } else {
-    const sum = () => {
-      const items = parseResiList(d.resiList);
-      const dups = items.filter((i) => i.dup).length, odd = items.filter((i) => i.odd && !i.dup).length;
-      $('#resisum').innerHTML = items.length ? `<div class="card" style="margin-top:12px">
-        <b>${items.length} label</b> · ${slotText(items.length)}
-        ${dups ? `<div class="chip todo" style="margin-top:6px">${dups} resi dobel akan diabaikan</div>` : ''}
-        ${odd ? `<div class="chip todo" style="margin-top:6px">${odd} resi tampak tidak biasa — periksa</div>` : ''}
-        <div class="muted" style="margin-top:8px;font-variant-numeric:tabular-nums">${items.map((i, n) => `${n + 1}. ${esc(i.resi)}${i.dup ? ' (dobel)' : ''}`).join('<br>')}</div></div>` : '';
-    };
-    bind('resilist', 'resiList', sum); sum();
-    ocrButton(async (files) => {
-      // Per gambar: coba baca barcode dulu (akurat), kalau tidak ada baru OCR.
-      const found = [];
-      for (const [i, f] of files.entries()) {
-        $('#shot').textContent = `Membaca ${i + 1}/${files.length}…`;
-        let got = extractResi((await readBarcodes(f)).join('\n'));
-        if (!got.length) got = extractResi((await ocrAll([f])).join('\n'));
-        got.forEach((r) => { if (!found.includes(r)) found.push(r); });
-      }
-      if (!found.length) return toast('Tidak ada nomor resi terbaca.');
-      d.resiList = [d.resiList.trim(), ...found].filter(Boolean).join('\n');
-      $('#resilist').value = d.resiList; sum();
-      toast(`${found.length} resi ditambahkan. Periksa dulu ya.`);
-    });
-    $('#go').onclick = () => saveShopee(true);
-    $('#save1').onclick = () => saveShopee(false);
-  }
-}
-
-// Tombol "screenshot": pilih gambar, OCR di HP, lalu serahkan teksnya ke handler.
-function ocrButton(handle) {
-  const btn = $('#shot'), input = $('#shotf'), label = btn.innerHTML;
-  btn.onclick = () => input.click();
-  input.onchange = async () => {
-    const files = [...input.files]; input.value = '';
+  // upload otomatis
+  $('#up').onclick = () => $('#upf').click();
+  $('#upf').onchange = async (e) => {
+    const files = [...e.target.files]; e.target.value = '';
     if (!files.length) return;
-    btn.disabled = true;
-    try { await handle(files, btn); }
-    catch (e) { toast(e.message || 'Gagal membaca gambar.'); }
-    finally { btn.disabled = false; btn.innerHTML = label; }
+    const btn = $('#up'); btn.disabled = true;
+    let n = 0;
+    try {
+      for (const [i, f] of files.entries()) {
+        const tag = files.length > 1 ? ` (${i + 1}/${files.length})` : '';
+        btn.textContent = `Membuka${tag}…`;
+        const got = await readAny(f, (m) => { btn.textContent = `${m}${tag}`; });
+        got.forEach((it) => { if (it.kind === 'wahana') it.courier = 'Wahana'; });
+        items.push(...got); n += got.length;
+      }
+      toast(`${n} pesanan terbaca. Cek dulu ya.`);
+    } catch (err) { toast(err.message || 'Gagal membaca file.'); }
+    viewBaru();
+  };
+
+  // isi manual
+  const bind = (id, key) => { const el = $('#' + id); if (el) el.oninput = () => { d[key] = el.value; }; };
+  ['chat', 'name', 'phone', 'address', 'other'].forEach((k) => bind(k, k));
+  $('.manual').ontoggle = (e) => { d.manualOpen = e.target.open; };
+  $('#courier').onchange = (e) => { d.courier = e.target.value; $('#other').style.display = d.courier === 'Lainnya' ? '' : 'none'; };
+  $('#cust')?.addEventListener('change', (e) => {
+    const c = customers.find((x) => x.id === Number(e.target.value));
+    if (!c) return;
+    Object.assign(d, { name: c.name, phone: c.phone, address: c.address });
+    ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
+  });
+  $('#tidy').onclick = () => {
+    const r = parseChat(d.chat);
+    if (!r.name && !r.phone && !r.address) return toast('Tidak ada yang bisa dirapikan.');
+    Object.assign(d, r);
+    ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
+    toast('Sudah dirapikan. Periksa dulu ya.');
+  };
+  $('#addm').onclick = () => {
+    if (!d.name.trim() || !d.address.trim()) return toast('Nama dan alamat wajib diisi.');
+    const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
+    items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier });
+    Object.assign(d, { chat: '', name: '', phone: '', address: '', manualOpen: false });
+    toast('Ditambahkan ke daftar.'); viewBaru();
   };
 }
-async function ocrAll(files) {
-  const btn = $('#shot'), texts = [];
-  for (const [i, f] of files.entries()) {
-    texts.push(await readImage(f, (p) => { btn.textContent = `Membaca${files.length > 1 ? ` ${i + 1}/${files.length}` : ''}… ${p}%`; }));
-  }
-  return texts;
-}
 
-// Banyak screenshot chat sekaligus: satu gambar = satu pesanan. Tampilkan semua untuk dicek, lalu simpan sekaligus.
-function batchWahana(texts) {
-  const d = draft;
-  const rows = texts.map((t) => parseChatOcr(t));
-  const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
-  modal(`<h2>${rows.length} screenshot dibaca</h2>
-    <p class="muted" style="margin-top:-4px">Periksa tiap pesanan. Ekspedisi: <b>${esc(courier)}</b>.</p>
-    ${rows.map((r, i) => `<div class="card batch" data-i="${i}">
-      <div class="row spread"><b>Pesanan ${i + 1}</b><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
-      <label class="f">Nama penerima</label><input type="text" data-k="name" value="${esc(r.name)}">
-      <label class="f">No. HP</label><input type="tel" data-k="phone" value="${esc(r.phone)}">
-      <label class="f">Alamat</label><textarea data-k="address" style="min-height:80px">${esc(r.address)}</textarea>
-    </div>`).join('')}
-    <div class="row"><button class="btn ghost grow" id="bonly">Simpan semua</button><button class="btn grow" id="bprint">${ic('printer', 18)} Simpan & cetak</button></div>
-    <button id="bsave" hidden></button>`, (m, close) => {
-    m.querySelectorAll('[data-rm]').forEach((b) => b.onclick = () => b.closest('.batch').remove());
-    $('#bsave', m).onclick = async () => {
-      const list = [...m.querySelectorAll('.batch')].map((c) => Object.fromEntries([...c.querySelectorAll('[data-k]')].map((el) => [el.dataset.k, el.value.trim()])));
-      if (!list.length) return close();
-      const bad = list.findIndex((r) => !r.name || !r.address);
-      if (bad >= 0) return toast(`Pesanan ${bad + 1}: nama dan alamat wajib diisi.`);
-      const ids = [], cs = await db.all('customers');
-      for (const r of list) {
-        const phone = normalizePhone(r.phone) || r.phone;
-        ids.push(await db.put('orders', { type: 'wahana', name: r.name, phone, address: r.address, courier, resi: '', weight: '', createdAt: new Date().toISOString(), printed: false }));
-        if (d.save) {
-          const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === r.name));
-          await db.put('customers', { ...(hit || {}), name: r.name, phone, address: r.address });
-        }
-      }
-      close(); afterSave(ids, m.dataset.print === '1');
-    };
-    $('#bonly', m).onclick = () => { m.dataset.print = '0'; $('#bsave', m).click(); };
-    $('#bprint', m).onclick = () => { m.dataset.print = '1'; $('#bsave', m).click(); };
-  });
+async function saveItems(print) {
+  const items = draft.items;
+  if (!items.length) return toast('Belum ada pesanan.');
+  const bad = items.findIndex((it) => (it.kind === 'wahana' ? !it.name?.trim() || !it.address?.trim() : false));
+  if (bad >= 0) return toast(`Pesanan ${bad + 1}: nama dan alamat wajib diisi.`);
+  const ids = [], cs = await db.all('customers'), now = new Date().toISOString();
+  for (const it of items) {
+    if (it.kind === 'shopee') {
+      ids.push(await db.put('orders', { type: 'shopee-img', resi: it.resi || '', img: it.img, h: it.h, createdAt: now, printed: false }));
+      continue;
+    }
+    const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', weight: '', createdAt: now, printed: false }));
+    if (draft.save) {
+      const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
+      await db.put('customers', { ...(hit || {}), name, phone, address });
+    }
+  }
+  draft.items = [];
+  afterSave(ids, print);
 }
 
 // Setelah simpan: langsung ke cetak, atau tetap di form untuk menambah pesanan lagi.
@@ -377,43 +306,6 @@ async function afterSave(ids, print) {
   const waiting = (await db.all('orders')).filter((o) => !o.printed).length;
   toast(`${ids.length > 1 ? `${ids.length} pesanan` : 'Pesanan'} disimpan. ${waiting} label menunggu di tab Cetak.`);
   await viewBaru(); window.scrollTo(0, 0);
-}
-
-function slotText(n) {
-  return `sisa kertas ${cm(paper(shop).cap - usedMM(shop))} cm (± ${Math.floor((paper(shop).cap - usedMM(shop)) / 50)} label 5 cm)`;
-}
-
-async function saveWahana(print) {
-  const d = draft;
-  const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
-  const name = d.name.trim(), address = d.address.trim(), resi = d.resi.replace(/\s+/g, '').toUpperCase();
-  if (!name || !address) return toast('Nama dan alamat wajib diisi.');
-  const phone = normalizePhone(d.phone) || d.phone.trim();
-  const id = await db.put('orders', { type: 'wahana', name, phone, address, courier, resi, weight: d.weight.trim(), createdAt: new Date().toISOString(), printed: false });
-  if (d.save) {
-    const cs = await db.all('customers');
-    const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
-    await db.put('customers', { ...(hit || {}), name, phone, address });
-  }
-  Object.assign(draft, { chat: '', name: '', phone: '', address: '', resi: '', other: '' });
-  afterSave([id], print);
-}
-
-async function saveShopee(print) {
-  const items = parseResiList(draft.resiList).filter((i) => !i.dup);
-  if (!items.length) return toast('Isi minimal satu resi.');
-  const ids = [];
-  for (const i of items) ids.push(await db.put('orders', { type: 'shopee', resi: i.resi, createdAt: new Date().toISOString(), printed: false }));
-  draft.resiList = '';
-  afterSave(ids, print);
-}
-
-async function saveShopeeImg(print) {
-  if (!draft.imgs.length) return toast('Upload minimal satu label Shopee.');
-  const ids = [];
-  for (const it of draft.imgs) ids.push(await db.put('orders', { type: 'shopee-img', resi: it.resi, img: it.img, h: it.h, createdAt: new Date().toISOString(), printed: false }));
-  draft.imgs = [];
-  afterSave(ids, print);
 }
 
 // ---------- Cetak ----------
@@ -469,8 +361,11 @@ async function viewCetak(qs) {
     <div class="preview" id="prev">${orders.map((o) => `<div class="pv"><span class="pv-cap">${posOf.has(o.id) ? `Mulai ${cm(posOf.get(o.id))} cm dari atas` : session.printed.has(o.id) ? 'Sudah dicetak' : 'Lembar berikutnya'}</span>${labelHTML(o, shop, logos)}</div>`).join('')}</div>
     <div id="warn"></div>
     ${plan.orders.length && !pend ? `<div class="card" style="margin-top:12px">${plan.orders.length} label dicetak di kertas ini${remaining.length > plan.orders.length ? `, sisa ${remaining.length - plan.orders.length} di kertas berikutnya` : ''}.</div>
-    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>
-    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>` : ''}
+    ${used ? `<div class="banner" style="margin-top:4px">Kertas ini sudah terpakai ${cm(used)} cm, jadi label akan mulai dari tengah. Kalau kamu memasang <b>kertas baru</b>, pilih “Kertas baru”.</div>
+    <div class="row"><button class="btn grow" id="printnew">${ic('printer', 18)} Kertas baru (dari atas)</button><button class="btn ghost grow" id="print">Lanjut di sisa kertas</button></div>`
+    : `<button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${plan.orders.length} label</button>`}
+    <button class="btn ghost block" id="jpg">${ic('download', 18)} Unduh JPG</button>`
+    : remaining.length && !pend ? `<button class="btn block" id="printnew">${ic('printer', 20)} Kertas baru, cetak dari atas</button>` : ''}
     <button class="btn ghost block" id="newsheet">Kertas baru, mulai dari atas</button>
     <p class="muted" style="text-align:center">Di dialog cetak pilih ${esc((PAPERS[shop.paper] || PAPERS.A4).dialog)}, skala 100%, tanpa margin/header. JPG: cetak dengan ukuran asli.</p>`, { back: true, nav: 'cetak' });
 
@@ -482,6 +377,12 @@ async function viewCetak(qs) {
   $$('[data-u]').forEach((b) => b.onclick = () => setUsed(used + Number(b.dataset.u)));
   $$('[data-uset]').forEach((b) => b.onclick = () => setUsed(Number(b.dataset.uset)));
   $('#newsheet').onclick = async () => { await saveShop({ used: 0 }); session.pending = null; session.showMap = false; viewCetak(qs); toast('Kertas baru, mulai dari atas.'); };
+  $('#printnew')?.addEventListener('click', async () => {
+    await saveShop({ used: 0 });
+    const fresh = layout(remaining, 0, shop);
+    await printHTML(await sheetsHTML([fresh], shop));
+    session.pending = fresh; viewCetak(qs);
+  });
   $('#print')?.addEventListener('click', async () => {
     const bad = await printHTML(await sheetsHTML([plan], shop));
     if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');

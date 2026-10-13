@@ -1,6 +1,6 @@
 // Label asli Shopee dari PDF atau screenshot: potong otomatis kotak labelnya, lalu baca no. resi.
 import { readBarcodes, readImage } from './ocr.js';
-import { extractResi } from './parser.js';
+import { extractResi, isKnownResi, parseChatOcr } from './parser.js';
 import { LABEL_W } from './label.js';
 
 const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
@@ -126,16 +126,47 @@ function crop(c) {
   return o;
 }
 
-// Kembalikan [{ img, h, resi }] untuk tiap label di file. h = tinggi label (mm) pada lebar 7 cm.
+// Putar 90° searah jarum jam: label Shopee yang lebar jadi tegak, supaya di kolom 7 cm isinya ±30% lebih besar.
+function rotate(c) {
+  const o = document.createElement('canvas'); o.width = c.height; o.height = c.width;
+  const ctx = o.getContext('2d'); ctx.translate(o.width, 0); ctx.rotate(Math.PI / 2); ctx.drawImage(c, 0, 0);
+  return o;
+}
+
+async function resiOf(c, file) {
+  let resi = extractResi((await readBarcodes(file || c)).join('\n'))[0] || extractResi(await readQR(c))[0];
+  if (!resi) { const blob = await new Promise((r) => c.toBlob(r, 'image/png')); resi = extractResi(await readImage(blob))[0] || ''; }
+  return resi;
+}
+
+function labelItem(page, resi) {
+  const c = rotate(crop(page));
+  const w = LABEL_W - 2 * IMG_PAD;
+  return { kind: 'shopee', img: c.toDataURL('image/png'), h: Math.round((w * c.height / c.width + 2 * IMG_PAD) * 10) / 10, resi };
+}
+
+// Kembalikan [{ kind:'shopee', img, h, resi }] untuk tiap label di file. h = tinggi label (mm) pada lebar 7 cm.
 export async function readShopeeLabels(file, onStep) {
   const out = [];
   for (const page of await toCanvases(file)) {
-    const c = crop(page);
     onStep?.('Membaca resi…');
-    let resi = extractResi((await readBarcodes(c)).join('\n'))[0] || extractResi(await readQR(c))[0];
-    if (!resi) { const blob = await new Promise((r) => c.toBlob(r, 'image/png')); resi = extractResi(await readImage(blob))[0] || ''; }
-    const w = LABEL_W - 2 * IMG_PAD;
-    out.push({ img: c.toDataURL('image/png'), h: Math.round((w * c.height / c.width + 2 * IMG_PAD) * 10) / 10, resi });
+    const c = crop(page);
+    out.push(labelItem(page, await resiOf(c)));
   }
   return out;
+}
+
+// Satu tombol untuk semua: PDF = label Shopee; gambar dengan QR/barcode/kata kunci resi = label Shopee;
+// selain itu dianggap screenshot chat WhatsApp -> pesanan Wahana.
+export async function readAny(file, onStep) {
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return readShopeeLabels(file, onStep);
+  const [page] = await toCanvases(file);
+  onStep?.('Mencari barcode…');
+  const codes = extractResi([...(await readBarcodes(file)), await readQR(page)].join('\n')).filter(isKnownResi);
+  if (codes.length) return [labelItem(page, codes[0])];
+  onStep?.('Membaca teks…');
+  const text = await readImage(file, (p) => onStep?.(`Membaca teks ${p}%`));
+  const resi = extractResi(text).filter(isKnownResi);
+  if (resi.length && /shopee|spx|no\.?\s*resi|pengirim|penerima/i.test(text)) return [labelItem(page, resi[0])];
+  return [{ kind: 'wahana', ...parseChatOcr(text) }];
 }

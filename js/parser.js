@@ -101,6 +101,7 @@ export function parseChatOcr(raw) {
 // supaya no. pesanan / no. HP di label tidak ikut.
 const RESI_PREFIX = /^(SPXID|SPX|JX|JP|JT|JD|TKP|IDE|IDS|CM|JNE|SCP|WHN|NLI|LXAD|GK|ID)/;
 // OCR sering salah baca angka sebagai huruf; betulkan bagian tengah resi berawalan SPXID.
+export const isKnownResi = (t) => RESI_PREFIX.test(t) && t !== 'ID';
 const fixDigits = (s) => s.replace(/^(SPXID)([A-Z0-9]+?)([A-Z]?)$/, (_, a, mid, end) => a + mid.replace(/[OQD]/g, '0').replace(/[IL]/g, '1').replace(/Z/g, '2').replace(/S/g, '5').replace(/B/g, '8').replace(/G/g, '6') + end);
 export function extractResi(raw) {
   const all = [];
