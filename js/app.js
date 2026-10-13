@@ -8,11 +8,11 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 23; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 25; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
-let draft = { items: [], manualOpen: false, chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', resi: '', weight: '1', save: true, resiList: '' };
+let draft = { items: [], manualOpen: false, chat: '', name: '', phone: '', address: '', courier: 'Wahana', other: '', save: true };
 let session = null; // { ids, printed:Set, pending:[orders]|null }
 
 const $ = (s, r = app) => r.querySelector(s);
@@ -40,7 +40,8 @@ function ask(title, msg, { ok = 'Ya', danger = false } = {}) {
       <div class="dialog-ic ${danger ? 'danger' : ''}">${ic(danger ? 'trash' : 'printer', 22)}</div>
       <h3>${esc(title)}</h3>${msg ? `<p>${esc(msg)}</p>` : ''}
       <div class="row"><button class="btn ghost grow" data-a="0">Batal</button><button class="btn grow ${danger ? 'red' : ''}" data-a="1">${esc(ok)}</button></div></div>`;
-    const done = (v) => { o.remove(); res(v); };
+    const done = (v) => { release(); o.remove(); res(v); };
+    const release = trapFocus(o, () => done(false), true);
     o.addEventListener('click', (e) => { if (e.target === o) done(false); const a = e.target.closest('[data-a]'); if (a) done(a.dataset.a === '1'); });
     document.body.append(o);
     o.querySelector('[data-a="1"]').focus();
@@ -54,15 +55,14 @@ function editOrder(o, onDone) {
     ${w ? `<label class="f">Nama penerima</label><input type="text" id="en" value="${esc(o.name)}">
     <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
-    <div class="row"><div class="grow"><label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}"></div>
-    <div style="width:110px"><label class="f">Berat (kg)</label><input type="number" id="ew" step="0.1" value="${esc(o.weight)}"></div></div>` : ''}
+    <label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}">` : ''}
     <label class="f">No. resi${w ? ' (catatan)' : ''}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
     $('#es', m).onclick = async () => {
       const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
-      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', weight: $('#ew', m).value.trim() });
+      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana' });
       if (w ? !v.name || !v.address : !v.resi) return toast(w ? 'Nama dan alamat wajib diisi.' : 'No. resi wajib diisi.');
       await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
     };
@@ -84,13 +84,31 @@ function bindOrderBtns(orders, refresh) {
   });
 }
 
+// Dialog: Escape menutup, Tab berputar di dalam dialog, fokus kembali ke tombol asal setelah ditutup.
+function trapFocus(o, onEscape, quiet) {
+  const back = document.activeElement;
+  const key = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); onEscape(); return; }
+    if (e.key !== 'Tab') return;
+    const f = [...o.querySelectorAll('button, input, select, textarea, a[href]')].filter((x) => !x.disabled && x.offsetParent);
+    if (!f.length) return;
+    if (e.shiftKey && document.activeElement === f[0]) { e.preventDefault(); f.at(-1).focus(); }
+    else if (!e.shiftKey && document.activeElement === f.at(-1)) { e.preventDefault(); f[0].focus(); }
+  };
+  document.addEventListener('keydown', key);
+  const release = () => { document.removeEventListener('keydown', key); back?.focus?.(); };
+  return quiet ? release : () => { release(); o.remove(); };
+}
+
 function modal(html, mount) {
   const o = document.createElement('div');
   o.className = 'overlay';
   o.innerHTML = `<div class="sheet-modal">${html}</div>`;
-  o.addEventListener('click', (e) => { if (e.target === o) o.remove(); });
+  o.addEventListener('click', (e) => { if (e.target === o) close(); });
+  const close = trapFocus(o, () => o.remove());
   document.body.append(o);
-  mount?.(o, () => o.remove());
+  o.querySelector('input, select, textarea, button')?.focus();
+  mount?.(o, close);
 }
 
 async function saveShop(patch) { shop = { ...shop, ...patch }; await db.saveShop(shop); }
@@ -179,13 +197,14 @@ async function viewPesanan() {
   const todo = orders.filter((o) => !o.printed).length;
   const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
   frame('Pesanan', `<section class="hero">
-      <p class="eyebrow light">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
-      <h1 class="display xl">Teman Outfit<br>Harianmu.</h1>
-      <p class="eyebrow light">Cetak resi rapi, tanpa tulis tangan</p>
-      <a class="btn sand" href="#/baru">Pesanan baru ${ic('chev', 16)}</a>
+      <p class="eyebrow light">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })} · Teman Outfit Harianmu</p>
+      ${todo ? `<div class="hero-focus"><b>${todo}</b><h1 class="display" style="margin:6px 0 14px">label belum dicetak</h1></div>
+      <div class="row"><a class="btn sand grow" href="#/cetak">${ic('printer', 18)} Cetak sekarang</a><a class="btn ghost" href="#/baru">${ic('plus', 18)} Baru</a></div>`
+      : `<h1 class="display" style="margin:6px 0 14px">Semua label sudah dicetak.</h1>
+      <a class="btn sand" href="#/baru">${ic('plus', 18)} Pesanan baru</a>`}
     </section>
     <div class="stats">
-      <div><b>${todo}</b><span>Belum dicetak</span></div>
+      <div><b>${orders.length - todo}</b><span>Sudah dicetak</span></div>
       <div><b>${today}</b><span>Hari ini</span></div>
       <div><b>${orders.length}</b><span>Total pesanan</span></div>
     </div>
@@ -303,7 +322,7 @@ async function viewBaru() {
     <button class="btn ghost block" id="more">${ic('plus', 18)} Tambah file lagi</button>` : ''}
     <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
       ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
-        <select id="cust"><option value="">— pilih —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
+        <select id="cust"><option value="">Pilih pelanggan</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
       <label class="f" for="chat">Tempel teks chat</label>
       <textarea id="chat" placeholder="Nama, HP, dan alamat dari chat pembeli…">${esc(d.chat)}</textarea>
       <button class="btn alt block" id="tidy" style="margin-top:8px">Rapikan</button>
@@ -324,7 +343,7 @@ async function viewBaru() {
   });
   $$('[data-rm]').forEach((b) => b.onclick = () => { items.splice(Number(b.dataset.rm), 1); viewBaru(); });
   $('#save')?.addEventListener('change', (e) => { d.save = e.target.checked; });
-  $('#go')?.addEventListener('click', () => saveItems(true));
+  $('#go')?.addEventListener('click', saveItems);
 
   // upload otomatis
   $('#up').onclick = () => $('#upf').click();
@@ -448,7 +467,7 @@ function dupeChecker(existing, items) {
   return fn;
 }
 
-async function saveItems(print) {
+async function saveItems() {
   const items = draft.items;
   if (!items.length) return toast('Belum ada pesanan.');
   const dn = dupeChecker(await db.all('orders'), items).count();
@@ -462,22 +481,14 @@ async function saveItems(print) {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', weight: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });
     }
   }
   draft.items = [];
-  afterSave(ids, print);
-}
-
-// Setelah simpan: langsung ke cetak, atau tetap di form untuk menambah pesanan lagi.
-async function afterSave(ids, print) {
-  if (print) { location.hash = `#/cetak?ids=${ids.join(',')}`; return; }
-  const waiting = (await db.all('orders')).filter((o) => !o.printed).length;
-  toast(`${ids.length > 1 ? `${ids.length} pesanan` : 'Pesanan'} disimpan. ${waiting} label menunggu di tab Cetak.`);
-  await viewBaru(); window.scrollTo(0, 0);
+  location.hash = `#/cetak?ids=${ids.join(',')}`;
 }
 
 // ---------- Cetak ----------
@@ -515,7 +526,7 @@ async function viewCetak(qs) {
 
   $('#print')?.addEventListener('click', async () => {
     const bad = await printHTML(await sheetsHTML(pages, shop));
-    if (bad) toast('Ada label dengan teks sangat panjang — periksa hasil cetak.');
+    if (bad) toast('Ada label dengan teks sangat panjang. Periksa hasil cetak.');
     session.pending = pages; viewCetak(qs);
   });
   $('#jpg')?.addEventListener('click', async () => {
@@ -541,7 +552,7 @@ function paginate(orders) {
   const pages = [];
   let rest = orders;
   while (rest.length) {
-    const pg = layout(rest, 0, shop);
+    const pg = layout(rest, shop);
     if (!pg.orders.length) { pg.orders = [rest[0]]; pg.ys = [0]; } // label lebih tinggi dari kertas: tetap cetak sendiri
     pages.push(pg); rest = rest.slice(pg.orders.length);
   }
@@ -587,7 +598,7 @@ async function viewPelanggan() {
       <button class="btn danger block" id="cd">Hapus pelanggan</button>`, (o, close) => {
       const read = () => ({ ...c, name: $('#cn', o).value.trim(), phone: normalizePhone($('#cp', o).value) || $('#cp', o).value.trim(), address: $('#ca', o).value.trim() });
       $('#cs', o).onclick = async () => { const v = read(); if (!v.name) return toast('Nama wajib diisi.'); await db.put('customers', v); close(); viewPelanggan(); };
-      $('#co', o).onclick = () => { const v = read(); Object.assign(draft, { mode: 'wahana', name: v.name, phone: v.phone, address: v.address }); close(); location.hash = '#/baru'; };
+      $('#co', o).onclick = () => { const v = read(); draft.items.push({ kind: 'wahana', name: v.name, phone: v.phone, address: v.address, courier: 'Wahana' }); close(); location.hash = '#/baru'; toast('Ditambahkan ke daftar pesanan.'); };
       $('#cd', o).onclick = async () => { if (await ask('Hapus pelanggan ini?', 'Label pesanan lama tidak berubah.', { ok: 'Hapus', danger: true })) { await db.del('customers', c.id); close(); viewPelanggan(); } };
     });
   });
@@ -625,7 +636,7 @@ async function viewPengaturan() {
       <button class="btn alt block" id="test">Cetak halaman tes</button>
     </div>
     <h2>Backup data</h2><div class="card">
-      <div class="muted">Backup terakhir: ${lb}. Simpan file di tempat aman — berisi data pelanggan.</div>
+      <div class="muted">Backup terakhir: ${lb}. Simpan file di tempat aman, karena berisi data pelanggan.</div>
       <button class="btn block" id="bk">Backup ke file</button>
       <input type="file" id="rf" accept="application/json,.json" hidden>
       <button class="btn ghost block" id="rs">Restore dari file</button>
@@ -683,7 +694,10 @@ async function render() {
     window.scrollTo(0, 0);
   } catch (e) {
     console.error(e);
-    app.innerHTML = '<main><div class="empty">Terjadi masalah saat membuka halaman.<br><a href="#/">Kembali ke Pesanan</a></div></main>';
+    app.innerHTML = `<main><div class="empty"><p>Halaman ini gagal dibuka. Data pesanan tetap aman di HP.</p>
+      <button class="btn block" onclick="location.reload()">Muat ulang</button>
+      <a class="btn ghost block" href="#/">Kembali ke Pesanan</a>
+      <a class="btn ghost block" href="#/pengaturan">Backup data</a></div></main>`;
   }
 }
 

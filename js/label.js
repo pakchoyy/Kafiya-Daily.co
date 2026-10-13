@@ -1,4 +1,5 @@
-// Pembuat label 7 × 5 cm dan lembar A4 (kolom tengah, slot 1–5 dari atas).
+// Template label (Wahana 7 × 5 cm, Shopee asli 7 × tinggi gambar) dan lembar cetak: kolom 7 cm di tengah kertas,
+// label ditumpuk dari atas.
 import { logoSet } from './logo.js';
 import { barcodeSVG } from './barcode.js';
 
@@ -19,12 +20,11 @@ export function paper(shop) {
   return { ...p, sheetH, colX: (p.w - LABEL_W) / 2, top: MIN_MARGIN, cap: sheetH - 2 * MIN_MARGIN };
 }
 export const labelH = (o) => (o.type === 'shopee-img' ? o.h : LABEL_H);
-export const usedMM = (shop) => Math.max(0, Math.min(shop.used || 0, paper(shop).cap));
 
-// Ambil label berurutan yang masih muat mulai dari posisi `used` (mm). ys = posisi tiap label dari atas kolom.
-export function layout(orders, used, shop) {
+// Ambil label berurutan yang masih muat di satu lembar. ys = posisi tiap label (mm) dari atas kolom.
+export function layout(orders, shop) {
   const cap = paper(shop).cap, out = [], ys = [];
-  let y = used;
+  let y = 0;
   for (const o of orders) {
     const h = labelH(o);
     if (y + h > cap + 0.01) break;
@@ -51,7 +51,7 @@ const cutSVG = (shop, boxes) => {
     .map((l) => `<line x1="${l.x1}" y1="${l.y1}" x2="${l.x2}" y2="${l.y2}"/>`).join('')}</svg>`;
 };
 // Ukuran halaman cetak mengikuti kertas yang dipilih.
-export function setPageSize(shop) {
+function setPageSize(shop) {
   const g = paper(shop);
   let el = document.getElementById('page-size');
   if (!el) { el = document.createElement('style'); el.id = 'page-size'; document.head.append(el); }
@@ -63,7 +63,7 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 const courierName = (o) => (o.courier || 'Wahana').toUpperCase();
 
-export const THANKS = 'Thanks for order \u263A\uFE0E';
+export const THANKS = 'Thanks for your order \u263A\uFE0E';
 export const fromLine = (shop) => `${shop.name}${shop.phone ? ` (${shop.phone})` : ''}`;
 
 export function labelHTML(order, shop, logos) {
@@ -121,7 +121,7 @@ export async function sheetsHTML(chunks, shop) {
 export function testSheetHTML(shop) {
   setPageSize(shop);
   const cells = Array.from({ length: Math.floor(paper(shop).cap / LABEL_H) }, (_, i) => `<div class="slot test" style="top:${paper(shop).top + i * LABEL_H}mm">
-    <div class="label testbox"><i class="h"></i><i class="v"></i><b>Slot ${i + 1}</b><span>70 × 50 mm</span></div></div>`).join('');
+    <div class="label testbox"><i class="h"></i><i class="v"></i><b>Label ${i + 1}</b><span>70 × 50 mm</span></div></div>`).join('');
   return `<section class="sheet" style="--dx:${shop.dx}mm;--dy:${shop.dy}mm;--col:${paper(shop).colX}mm">${cells}</section>`;
 }
 

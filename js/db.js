@@ -27,9 +27,9 @@ async function run(store, mode, fn) {
   });
 }
 
-export const DEFAULT_SHOP = {
+const DEFAULT_SHOP = {
   name: 'Kafiya Daily.co', phone: '081226123571', logo: null, bw: false,
-  dx: 0, dy: 0, used: null, lastBackup: null, paper: 'A4', cutLines: true,
+  dx: 0, dy: 0, lastBackup: null, paper: 'A4', cutLines: true,
 };
 
 export async function getShop() {
@@ -37,8 +37,7 @@ export async function getShop() {
   // Data lama: nama bawaan lama dan HP kosong diganti bawaan baru.
   if (s.name === 'Kafiya Daily') s.name = DEFAULT_SHOP.name;
   if (!s.phone) s.phone = DEFAULT_SHOP.phone;
-  // Dulu posisi disimpan sebagai nomor slot 5 cm; sekarang dalam mm dari atas kolom.
-  if (s.used == null) s.used = ((s.nextSlot || 1) - 1) * 50;
+  delete s.nextSlot; delete s.used; // sisa fitur posisi kertas lama
   return s;
 }
 export const saveShop = (shop) => run('kv', 'readwrite', (s) => s.put(shop, 'shop'));

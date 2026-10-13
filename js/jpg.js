@@ -1,4 +1,4 @@
-// Gambar lembar A4 (300 dpi) berisi label di slotnya, lalu unduh sebagai JPG.
+// Gambar satu lembar kertas (300 dpi) berisi label di posisinya, lalu unduh sebagai JPG.
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';
@@ -78,7 +78,7 @@ function drawLabel(ctx, o, shop, img) {
   drawFoot(ctx, footY, W, P);
 }
 
-// chunk: { orders:[...], ys:[...] } — sama dengan yang dipakai saat cetak.
+// chunk: { orders:[...], ys:[...] }, sama dengan yang dipakai saat cetak.
 export async function sheetJPG(chunk, shop) {
   const logos = await logoSet(shop);
   const img = { mark: await loadImg(logos.mark), full: await loadImg(logos.full) };

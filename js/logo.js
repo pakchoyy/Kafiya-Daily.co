@@ -29,7 +29,7 @@ export async function processLogo(file) {
 }
 
 const bwCache = new Map();
-export async function toBW(dataUrl) {
+async function toBW(dataUrl) {
   if (bwCache.has(dataUrl)) return bwCache.get(dataUrl);
   const img = await load(dataUrl);
   const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;

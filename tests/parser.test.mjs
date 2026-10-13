@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseChat, parseResiList, normalizePhone } from '../js/parser.js';
+import { parseChat, normalizePhone } from '../js/parser.js';
 
 test('normalizePhone', () => {
   assert.equal(normalizePhone('+62 812-3456-7890'), '081234567890');
@@ -27,11 +27,6 @@ test('satu baris', () => {
   assert.equal(r.name, 'Rina');
   assert.equal(r.phone, '081234567890');
   assert.equal(r.address, 'Jl. Kenanga 7 Bekasi');
-});
-
-test('daftar resi', () => {
-  const r = parseResiList('spx123456789\n spx123456789 \n\nab1');
-  assert.deepEqual(r.map((x) => [x.resi, x.dup, x.odd]), [['SPX123456789', false, false], ['SPX123456789', true, false], ['AB1', false, true]]);
 });
 
 import { cleanOcr, extractResi } from '../js/parser.js';

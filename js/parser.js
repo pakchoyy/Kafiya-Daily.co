@@ -113,15 +113,3 @@ export function extractResi(raw) {
   const known = all.filter((t) => RESI_PREFIX.test(t));
   return known.length ? known : all;
 }
-
-// Daftar resi Shopee: satu per baris, huruf besar, tanpa spasi.
-export function parseResiList(raw) {
-  const seen = new Set();
-  return String(raw || '').split(/\r?\n/)
-    .map((l) => l.replace(/\s+/g, '').toUpperCase()).filter(Boolean)
-    .map((resi) => {
-      const dup = seen.has(resi);
-      seen.add(resi);
-      return { resi, dup, odd: !/^[A-Z0-9-]{8,25}$/.test(resi) };
-    });
-}
