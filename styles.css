@@ -108,6 +108,28 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label.img img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .tabs.sub button { min-height: 40px; font-size: 11px; }
 .item-card .sp-thumb { width: 100%; max-height: 300px; object-fit: contain; background: #fff; border: 1px solid var(--line); margin-top: 8px; }
+.search { display: flex; align-items: center; gap: 10px; padding: 0 14px; min-height: 48px; background: var(--card); border: 1px solid var(--line); border-radius: 99px; color: var(--muted); }
+.search:focus-within { border-color: var(--ink); }
+.search input { flex: 1; border: 0 !important; background: transparent !important; min-height: 44px !important; padding: 0 !important; outline: none; font-size: 16px; }
+.chips { display: flex; gap: 8px; overflow-x: auto; padding: 10px 0 2px; margin: 0 -18px; padding-left: 18px; padding-right: 18px; scrollbar-width: none; position: relative; }
+.chips::-webkit-scrollbar { display: none; }
+.pill { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--text); font-size: 13px; white-space: nowrap; }
+.pill.on { background: var(--ink); border-color: var(--ink); color: #fff; }
+.chips input[type=date] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.sumcard { display: grid; grid-template-columns: 1fr 1fr; background: var(--card); border: 1px solid var(--line); }
+.sumcard div { padding: 14px; text-align: center; }
+.sumcard div + div { border-left: 1px solid var(--line); }
+.sumcard b { display: block; font-size: 28px; font-weight: 500; line-height: 1.1; }
+.sumcard span { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.card.confirm { border-color: var(--sand); }
+.dialog.prog { max-width: 320px; }
+.prog-thumb { position: relative; width: 84px; height: 110px; margin: 0 auto 6px; border-radius: 12px; overflow: hidden; background: #F5EDE7; display: grid; place-items: center; }
+.prog-thumb img { width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+.prog-thumb .spin { position: absolute; width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7); border-top-color: var(--sand-d); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.bar { height: 8px; border-radius: 99px; background: #EFE7DE; overflow: hidden; margin: 6px 0 8px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--sand); border-radius: 99px; transition: width .3s; }
+.dialog.prog .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filters input[type=search] { width: 100%; min-height: 46px; padding: 10px 14px; font-size: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 2px; outline: none; }
 .filters input[type=search]:focus { border-color: var(--ink); }
 .filters select { min-height: 44px; font-size: 14px; }
