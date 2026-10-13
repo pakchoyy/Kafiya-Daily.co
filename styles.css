@@ -141,17 +141,15 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label .lb-name { font-weight: 700; font-size: 8pt; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label .lb-exp { font-weight: 700; font-size: 11pt; letter-spacing: .3mm; }
 .label .lb-resi { font-weight: 700; font-size: 15pt; letter-spacing: .2mm; white-space: nowrap; overflow: hidden; text-align: center; flex: none; padding: 1.2mm 0; font-variant-numeric: tabular-nums; }
-.label .lb-resi.blank { font-size: 8pt; font-weight: 400; text-align: left; letter-spacing: 0; display: flex; gap: 2mm; padding: 2.5mm 0 1.5mm; }
-.label .lb-resi.blank::after { content: ''; flex: 1; border-bottom: .3mm solid #000; }
-.label .lb-to { font-size: 10pt; flex: none; }
-.label .lb-addr { flex: 1; min-height: 0; overflow: hidden; font-size: 8pt; margin-top: .8mm; }
-.label .lb-from { flex: none; display: flex; justify-content: space-between; gap: 2mm; font-size: 6.5pt; border-top: .3mm solid #000; padding-top: .8mm; margin-top: .8mm; }
-.label .lb-from span:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.label .lb-from span:last-child { white-space: nowrap; font-weight: 700; }
-.label.shopee { justify-content: center; align-items: center; text-align: center; }
+.label .lb-row { font-size: 8pt; flex: none; margin-top: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.label .lb-to { font-size: 10pt; flex: none; margin-top: .6mm; }
+.label .lb-addr { flex: 1; min-height: 0; overflow: hidden; font-size: 8pt; margin-top: .6mm; }
+.label .lb-foot { flex: none; border-top: .3mm solid #000; margin: 1mm 0 1.5mm; padding-top: 1mm; text-align: center; font-size: 7.5pt; font-style: italic; }
+.label.shopee { justify-content: flex-start; align-items: center; text-align: center; padding-top: 4mm; }
 .label.shopee .lb-logo-wrap { height: 15mm; display: grid; place-items: center; }
 .label.shopee .lb-logo { max-height: 14mm; max-width: 52mm; }
-.label.shopee .lb-resi { width: 100%; font-size: 20pt; padding: 3mm 0 0; }
+.label.shopee .lb-resi { width: 100%; font-size: 20pt; padding: 2.5mm 0 0; }
+.label.shopee .lb-foot { width: 100%; margin-top: 2.5mm; }
 .label.testbox { position: relative; border: .3mm dashed #000; display: grid; place-items: center; text-align: center; font-size: 10pt; }
 .label.testbox span { font-size: 8pt; }
 .label.testbox i { position: absolute; background: #000; }

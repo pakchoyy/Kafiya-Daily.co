@@ -48,20 +48,24 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 const courierName = (o) => (o.courier || 'Wahana').toUpperCase();
 
+export const THANKS = 'Thanks for order \u263A\uFE0E';
+export const fromLine = (shop) => `${shop.name}${shop.phone ? ` (${shop.phone})` : ''}`;
+
 export function labelHTML(order, shop, logos) {
   if (order.type === 'shopee') {
     return `<div class="label shopee">
       <div class="lb-logo-wrap"><img class="lb-logo" src="${logos.full}" alt=""></div>
       <div class="lb-resi" data-max="20">${esc(order.resi)}</div>
+      <div class="lb-foot">${THANKS}</div>
     </div>`;
   }
-  const w = order.weight ? `${esc(order.weight)} kg` : '';
   return `<div class="label wahana">
     <div class="lb-head"><span class="lb-id"><img class="lb-logo" src="${logos.mark}" alt=""><span class="lb-name">${esc(shop.name)}</span></span><span class="lb-exp">${esc(courierName(order))}</span></div>
-    ${order.resi ? `<div class="lb-resi" data-max="15">${esc(order.resi)}</div>` : '<div class="lb-resi blank">No. resi:</div>'}
+    <div class="lb-row"><b>Dari :</b> ${esc(fromLine(shop))}</div>
+    <div class="lb-row"><b>Untuk :</b></div>
     <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
-    <div class="lb-from"><span>Dari: ${esc(shop.name)}${shop.phone ? ` &middot; ${esc(shop.phone)}` : ''}</span><span>${w}</span></div>
+    <div class="lb-foot">${THANKS}</div>
   </div>`;
 }
 

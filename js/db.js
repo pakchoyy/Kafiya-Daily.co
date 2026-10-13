@@ -28,11 +28,17 @@ async function run(store, mode, fn) {
 }
 
 export const DEFAULT_SHOP = {
-  name: 'Kafiya Daily', phone: '', logo: null, bw: false,
+  name: 'Kafiya Daily.co', phone: '081226123571', logo: null, bw: false,
   dx: 0, dy: 0, nextSlot: 1, lastBackup: null, paper: 'A4', cutLines: true,
 };
 
-export const getShop = async () => ({ ...DEFAULT_SHOP, ...((await run('kv', 'readonly', (s) => s.get('shop'))) || {}) });
+export async function getShop() {
+  const s = { ...DEFAULT_SHOP, ...((await run('kv', 'readonly', (st) => st.get('shop'))) || {}) };
+  // Data lama: nama bawaan lama dan HP kosong diganti bawaan baru.
+  if (s.name === 'Kafiya Daily') s.name = DEFAULT_SHOP.name;
+  if (!s.phone) s.phone = DEFAULT_SHOP.phone;
+  return s;
+}
 export const saveShop = (shop) => run('kv', 'readwrite', (s) => s.put(shop, 'shop'));
 
 export const all = (store) => run(store, 'readonly', (s) => s.getAll());
