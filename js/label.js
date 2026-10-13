@@ -52,7 +52,7 @@ export function labelHTML(order, shop, logos) {
   const w = order.weight ? `${esc(order.weight)} kg` : '';
   return `<div class="label wahana">
     <div class="lb-head"><span class="lb-id"><img class="lb-logo" src="${logos.mark}" alt=""><span class="lb-name">${esc(shop.name)}</span></span><span class="lb-exp">${esc(courierName(order))}</span></div>
-    <div class="lb-resi" data-max="15">${esc(order.resi)}</div>
+    ${order.resi ? `<div class="lb-resi" data-max="15">${esc(order.resi)}</div>` : '<div class="lb-resi blank">No. resi:</div>'}
     <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
     <div class="lb-from"><span>Dari: ${esc(shop.name)}${shop.phone ? ` &middot; ${esc(shop.phone)}` : ''}</span><span>${w}</span></div>
@@ -69,7 +69,7 @@ export function fitLabel(el) {
     while (a.scrollHeight > a.clientHeight + 0.5 && s > 5.5) a.style.fontSize = (s -= 0.25) + 'pt';
     if (a.scrollHeight > a.clientHeight + 0.5) ok = false;
   }
-  const r = el.querySelector('.lb-resi');
+  const r = el.querySelector('.lb-resi:not(.blank)');
   if (r) {
     let s = Number(r.dataset.max);
     r.style.fontSize = s + 'pt';
