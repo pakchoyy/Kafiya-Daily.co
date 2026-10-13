@@ -34,14 +34,46 @@ function modal(html, mount) {
 async function saveShop(patch) { shop = { ...shop, ...patch }; await db.saveShop(shop); }
 
 // ---------- kerangka ----------
-function frame(title, body, { back = false, nav = 'pesanan' } = {}) {
+const ICON = {
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  back: '<path d="M15 18l-6-6 6-6"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+  printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  chev: '<path d="M9 18l6-6-6-6"/>',
+};
+const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
+
+// ---------- pasang PWA ----------
+let installEvt = null;
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; $$('.install-slot').forEach((el) => { el.innerHTML = installCard(); bindInstall(); }); });
+window.addEventListener('appinstalled', () => { installEvt = null; toast('Aplikasi terpasang di layar HP.'); $$('.install-slot').forEach((el) => { el.innerHTML = ''; }); });
+function installCard() {
+  if (isStandalone()) return '';
+  return `<div class="install">
+    <img src="icons/icon-192.png" alt="">
+    <div class="grow"><b>Pasang di layar HP</b><div class="muted">${installEvt ? 'Buka seperti aplikasi, tetap jalan tanpa internet.' : 'Di Chrome: menu &#8942; &rarr; <b>Tambahkan ke layar utama</b> / <b>Instal aplikasi</b>.'}</div></div>
+    ${installEvt ? `<button class="btn sm" id="install">${ic('download', 18)} Pasang</button>` : ''}
+  </div>`;
+}
+function bindInstall() {
+  const b = $('#install');
+  if (b) b.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; render(); };
+}
+
+function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}) {
   const logo = `<img src="${esc(shop.logo || DEFAULT_LOGOS.mark)}" alt="">`;
-  app.innerHTML = `<header class="top">${back ? '<a class="back" href="#/" aria-label="Kembali">&#8249;</a>' : logo}<h1>${esc(title)}</h1></header>
-  <main>${body}</main>
+  app.innerHTML = `${hero ? '' : `<header class="top">${back ? `<a class="back" href="#/" aria-label="Kembali">${ic('back', 24)}</a>` : logo}<h1>${esc(title)}</h1></header>`}
+  <main class="${hero ? 'hero-main' : ''}">${body}</main>
   <nav class="bottom">
-    ${[['pesanan', '', '&#9776;', 'Pesanan'], ['pelanggan', 'pelanggan', '&#9786;', 'Pelanggan'], ['pengaturan', 'pengaturan', '&#9881;', 'Pengaturan']]
-      .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}"><span>${i}</span>${l}</a>`).join('')}
+    ${[['pesanan', '', 'list', 'Pesanan'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Pengaturan']]
+      .map(([k, h, i, l]) => `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i)}<span>${l}</span></a>`).join('')}
   </nav>`;
+  bindInstall();
 }
 
 // ---------- Pesanan ----------
@@ -50,17 +82,29 @@ async function viewPesanan() {
   const days = shop.lastBackup ? (Date.now() - new Date(shop.lastBackup)) / 864e5 : Infinity;
   const remind = orders.length && days > BACKUP_DAYS
     ? `<div class="banner">${shop.lastBackup ? `Backup terakhir ${Math.floor(days)} hari lalu.` : 'Data belum pernah di-backup.'} <a href="#/pengaturan">Backup sekarang</a></div>` : '';
-  frame('Pesanan', `${remind}
-    <a class="btn block" style="margin-top:0" href="#/baru">+ Pesanan baru</a>
+  const todo = orders.filter((o) => !o.printed).length;
+  const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
+  frame('Pesanan', `<section class="hero">
+      <img class="hero-logo" src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}">
+      <div class="stats">
+        <div><b>${todo}</b><span>belum dicetak</span></div>
+        <div><b>${today}</b><span>hari ini</span></div>
+        <div><b>${shop.nextSlot}</b><span>slot berikutnya</span></div>
+      </div>
+    </section>
+    <div class="install-slot">${installCard()}</div>
+    ${remind}
+    <a class="btn block big" href="#/baru">${ic('plus')} Pesanan baru</a>
     <h2>Riwayat</h2>
     ${orders.length ? orders.map((o) => `<div class="item">
-      <a href="#/cetak?ids=${o.id}" style="flex:1;text-decoration:none;color:inherit">
+      <span class="avatar ${o.type}">${o.type === 'shopee' ? 'S' : esc((o.courier || 'W')[0])}</span>
+      <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
         <div class="t">${esc(o.resi)}</div>
-        <div class="muted">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
+        <div class="muted ell">${o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
       </a>
       <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
-      <button class="btn danger sm" data-del="${o.id}" aria-label="Hapus">&#10005;</button>
-    </div>`).join('') : '<div class="empty">Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</div>'}`);
+      <button class="icon-btn" data-del="${o.id}" aria-label="Hapus">${ic('trash', 18)}</button>
+    </div>`).join('') : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
   $$('[data-del]').forEach((b) => b.onclick = async () => {
     if (confirm('Hapus pesanan ini?')) { await db.del('orders', Number(b.dataset.del)); viewPesanan(); }
   });
@@ -202,7 +246,7 @@ async function viewCetak(qs) {
     <div class="slots">${slotBtns}</div>
     <div class="muted" style="margin-top:6px">Ketuk slot untuk mengganti slot berikutnya.</div>
     ${remaining.length && !pend ? `<div class="card" style="margin-top:12px">${chunk.length} label dicetak di lembar ini (slot ${next}–${next + chunk.length - 1})${remaining.length > chunk.length ? `, sisa ${remaining.length - chunk.length} di lembar berikutnya` : ''}.</div>
-    <button class="btn block" id="print">${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>` : ''}
+    <button class="btn block" id="print">${ic('printer', 20)} ${session.printed.size ? 'Lanjut cetak' : 'Cetak'} ${chunk.length} label</button>` : ''}
     <button class="btn ghost block" id="newsheet">Lembar baru, mulai dari slot 1</button>
     <p class="muted" style="text-align:center">Di dialog cetak pilih A4, skala 100%, tanpa margin/header.</p>`, { back: true });
 
@@ -230,7 +274,7 @@ async function viewCetak(qs) {
 async function viewPelanggan() {
   const cs = (await db.all('customers')).sort((a, b) => a.name.localeCompare(b.name));
   frame('Pelanggan', cs.length ? cs.map((c) => `<div class="item" data-c="${c.id}" role="button" tabindex="0">
-      <div class="grow"><div class="t">${esc(c.name)}</div><div class="muted">${esc(c.phone)} · ${esc(c.address).slice(0, 60)}</div></div><span>&#8250;</span></div>`).join('')
+      <div class="grow"><div class="t">${esc(c.name)}</div><div class="muted">${esc(c.phone)} · ${esc(c.address).slice(0, 60)}</div></div>${ic('chev', 18)}</div>`).join('')
     : '<div class="empty">Belum ada pelanggan tersimpan.<br>Pelanggan tersimpan otomatis dari pesanan Wahana.</div>', { nav: 'pelanggan' });
   $$('[data-c]').forEach((el) => el.onclick = () => {
     const c = cs.find((x) => x.id === Number(el.dataset.c));
@@ -277,6 +321,7 @@ async function viewPengaturan() {
       <input type="file" id="rf" accept="application/json,.json" hidden>
       <button class="btn ghost block" id="rs">Restore dari file</button>
     </div>
+    <h2>Aplikasi</h2><div class="install-slot">${installCard() || '<div class="banner ok">Aplikasi sudah terpasang.</div>'}</div>
     <p class="muted" style="text-align:center">Semua data tersimpan di HP ini, tanpa server.</p>`, { nav: 'pengaturan' });
 
   const showSt = () => { $('#v-dx').textContent = `${shop.dx} mm`; $('#v-dy').textContent = `${shop.dy} mm`; };
