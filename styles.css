@@ -134,7 +134,7 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 @keyframes pop { from { transform: scale(.92); opacity: 0; } }
 
 /* ---------- Label 7 × 5 cm (dipakai di pratinjau dan cetak) ---------- */
-.label { width: 70mm; height: 50mm; padding: 2.5mm; display: flex; flex-direction: column; overflow: hidden; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; line-height: 1.15; }
+.label { width: 70mm; height: 50mm; padding: 2.5mm 4.5mm; display: flex; flex-direction: column; overflow: hidden; background: #fff; color: #000; font-family: Arial, Helvetica, sans-serif; line-height: 1.15; }
 .label .lb-head { display: flex; align-items: center; justify-content: space-between; height: 9.5mm; flex: none; border-bottom: .3mm solid #000; padding-bottom: 1mm; }
 .label .lb-id { display: flex; align-items: center; gap: 1.5mm; min-width: 0; }
 .label .lb-logo { max-height: 8.5mm; max-width: 14mm; object-fit: contain; }
@@ -145,11 +145,12 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label .lb-to { font-size: 10pt; flex: none; margin-top: .6mm; }
 .label .lb-addr { flex: 1; min-height: 0; overflow: hidden; font-size: 8pt; margin-top: .6mm; }
 .label .lb-foot { flex: none; border-top: .3mm solid #000; margin: 1mm 0 1.5mm; padding-top: 1mm; text-align: center; font-size: 7.5pt; font-style: italic; }
-.label.shopee { justify-content: flex-start; align-items: center; text-align: center; padding-top: 4mm; }
-.label.shopee .lb-logo-wrap { height: 15mm; display: grid; place-items: center; }
-.label.shopee .lb-logo { max-height: 14mm; max-width: 52mm; }
-.label.shopee .lb-resi { width: 100%; font-size: 20pt; padding: 2.5mm 0 0; }
-.label.shopee .lb-foot { width: 100%; margin-top: 2.5mm; }
+.label.shopee { justify-content: flex-start; align-items: center; text-align: center; padding-top: 3mm; }
+.label.shopee .lb-logo-wrap { height: 11mm; display: grid; place-items: center; }
+.label.shopee .lb-logo { max-height: 10.5mm; max-width: 45mm; }
+.label.shopee .lb-bar { display: block; width: 52mm; height: 11mm; margin-top: 2mm; fill: #000; }
+.label.shopee .lb-resi { width: 100%; font-size: 17pt; padding: 1mm 0 0; }
+.label.shopee .lb-foot { width: 100%; margin: 1.5mm 0 0; }
 .label.testbox { position: relative; border: .3mm dashed #000; display: grid; place-items: center; text-align: center; font-size: 10pt; }
 .label.testbox span { font-size: 8pt; }
 .label.testbox i { position: absolute; background: #000; }

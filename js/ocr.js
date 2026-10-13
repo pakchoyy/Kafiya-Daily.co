@@ -17,7 +17,7 @@ function loadLib() {
 // Siapkan gambar: teks berwarna (mis. resi merah) dan mode gelap jadi teks gelap di latar putih.
 export async function prepare(file) {
   const bmp = await createImageBitmap(file);
-  const sc = Math.min(2, Math.max(1, 1600 / bmp.width));
+  const sc = Math.min(3, Math.max(1, 2400 / bmp.width));
   const w = Math.round(bmp.width * sc), h = Math.round(bmp.height * sc);
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const ctx = c.getContext('2d', { willReadFrequently: true });
@@ -33,6 +33,16 @@ export async function prepare(file) {
   }
   ctx.putImageData(d, 0, 0);
   return c;
+}
+
+// Baca barcode langsung (Chrome Android punya BarcodeDetector); lebih akurat dari OCR untuk resi.
+export async function readBarcodes(file) {
+  if (!('BarcodeDetector' in window)) return [];
+  try {
+    const det = new window.BarcodeDetector({ formats: ['code_128', 'code_39', 'qr_code'] });
+    const codes = await det.detect(await createImageBitmap(file));
+    return [...new Set(codes.map((c) => c.rawValue.trim().toUpperCase()))];
+  } catch { return []; }
 }
 
 let worker;

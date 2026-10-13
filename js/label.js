@@ -1,5 +1,6 @@
 // Pembuat label 7 × 5 cm dan lembar A4 (kolom tengah, slot 1–5 dari atas).
 import { logoSet } from './logo.js';
+import { barcodeSVG } from './barcode.js';
 
 export const LABEL_W = 70, LABEL_H = 50;
 const MIN_MARGIN = 10; // mm atas/bawah yang biasanya tidak bisa dicetak printer
@@ -55,7 +56,8 @@ export function labelHTML(order, shop, logos) {
   if (order.type === 'shopee') {
     return `<div class="label shopee">
       <div class="lb-logo-wrap"><img class="lb-logo" src="${logos.full}" alt=""></div>
-      <div class="lb-resi" data-max="20">${esc(order.resi)}</div>
+      ${barcodeSVG(order.resi)}
+      <div class="lb-resi" data-max="17">${esc(order.resi)}</div>
       <div class="lb-foot">${THANKS}</div>
     </div>`;
   }

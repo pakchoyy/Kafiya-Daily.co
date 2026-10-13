@@ -97,12 +97,19 @@ export function parseChatOcr(raw) {
 }
 
 // Ambil kandidat no. resi dari teks OCR: kode huruf/angka 10–25 karakter yang mengandung angka.
+// Awalan resi yang dikenal (SPX/Shopee, J&T, JNE, SiCepat, Wahana, ...). Kalau ada yang cocok, hanya itu yang diambil
+// supaya no. pesanan / no. HP di label tidak ikut.
+const RESI_PREFIX = /^(SPXID|SPX|JX|JP|JT|JD|TKP|IDE|IDS|CM|JNE|SCP|WHN|NLI|LXAD|GK|ID)/;
+// OCR sering salah baca angka sebagai huruf; betulkan bagian tengah resi berawalan SPXID.
+const fixDigits = (s) => s.replace(/^(SPXID)([A-Z0-9]+?)([A-Z]?)$/, (_, a, mid, end) => a + mid.replace(/[OQD]/g, '0').replace(/[IL]/g, '1').replace(/Z/g, '2').replace(/S/g, '5').replace(/B/g, '8').replace(/G/g, '6') + end);
 export function extractResi(raw) {
-  const out = [];
+  const all = [];
   for (const m of String(raw || '').toUpperCase().matchAll(/\b[A-Z0-9]{10,25}\b/g)) {
-    if (/\d{5}/.test(m[0]) && !/^0?8\d{8,12}$/.test(m[0]) && !out.includes(m[0])) out.push(m[0]);
+    const t = fixDigits(m[0]);
+    if (/\d{5}/.test(t) && !/^(0|62)8\d{8,12}$/.test(t) && !all.includes(t)) all.push(t);
   }
-  return out;
+  const known = all.filter((t) => RESI_PREFIX.test(t));
+  return known.length ? known : all;
 }
 
 // Daftar resi Shopee: satu per baris, huruf besar, tanpa spasi.

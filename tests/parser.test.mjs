@@ -65,3 +65,17 @@ test('screenshot WhatsApp asli: abaikan obrolan, ambil an. dan baris alamat', ()
 test('tempel teks dengan an. juga dikenali', () => {
   assert.equal(parseChat('Margoasri rt 09/rw 05, Klaten\nan. Silvyani').name, 'Silvyani');
 });
+
+import { code128, PATTERNS } from '../js/barcode.js';
+
+test('Code128: semua pola 11 modul (stop 13) dan bisa didekode kembali', () => {
+  PATTERNS.forEach((p, i) => assert.equal([...p].reduce((a, b) => a + Number(b), 0), i === 106 ? 13 : 11));
+  const w = code128('SPXID06896190292A');
+  const syms = []; for (let i = 0; i < w.length - 7; i += 6) syms.push(PATTERNS.indexOf(w.slice(i, i + 6)));
+  assert.equal(syms[0], 104);
+  const data = syms.slice(1, -1);
+  assert.equal(String.fromCharCode(...data.map((v) => v + 32)), 'SPXID06896190292A');
+  const check = [104, ...data].reduce((s, v, i) => s + v * (i || 1), 0) % 103;
+  assert.equal(syms.at(-1), check);
+  assert.equal(new Set(PATTERNS).size, 107);
+});
