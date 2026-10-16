@@ -8,7 +8,7 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 26; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 27; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -124,6 +124,7 @@ const ICON = {
   printer: '<path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>',
   download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
   chev: '<path d="M9 18l6-6-6-6"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
@@ -314,13 +315,13 @@ async function viewBaru() {
         <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}${dupe(it, i)}</div>`;
 
   frame('Pesanan baru', `
-    <div class="row"><button class="btn big grow" id="up">${ic('camera', 20)} Upload screenshot</button><button class="btn ghost big" id="pdf">${ic('download', 18)} PDF</button></div>
+    <div class="row"><button class="btn big grow" id="up">${ic('camera', 20)} Upload screenshot</button><button class="btn ghost big" id="pdf">${ic('file', 18)} PDF</button></div>
     <input type="file" id="upf" accept="image/*" multiple hidden>
     <input type="file" id="pdff" accept="application/pdf,.pdf" multiple hidden>
     <p class="muted" style="margin-top:8px">Bisa banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>screenshot atau PDF label Shopee</b> jadi label Shopee. PDF diambil dari folder file (misal Download), dan satu halaman berisi beberapa label juga bisa.</p>
     ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn danger sm" id="reset">${ic('trash', 16)} Kosongkan semua</button></div>
     ${items.map(card).join('')}
-    <div class="row" style="margin-top:12px"><button class="btn ghost grow" id="more">${ic('plus', 18)} Tambah screenshot</button><button class="btn ghost grow" id="morepdf">${ic('plus', 18)} Tambah PDF</button></div>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn ghost grow" id="more">${ic('camera', 18)} Tambah screenshot</button><button class="btn ghost grow" id="morepdf">${ic('file', 18)} Tambah PDF</button></div>` : ''}
     <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
       ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
         <select id="cust"><option value="">Pilih pelanggan</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
