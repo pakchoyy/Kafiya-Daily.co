@@ -107,7 +107,7 @@ function findLabelBox(gray, W, H) {
   if (maxLen >= (py1 - py0) * 0.25 && cands.length) {
     const xs = cands.map((r) => r.x);
     if (Math.max(...xs) - Math.min(...xs) > (px1 - px0) * 0.4) {
-      return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...cands.map((r) => r.s)), y1: Math.max(...cands.map((r) => r.e)) };
+      return { framed: true, x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...cands.map((r) => r.s)), y1: Math.max(...cands.map((r) => r.e)) };
     }
   }
   let x0 = px1, x1 = px0, y0 = py1, y1 = py0;
@@ -115,15 +115,51 @@ function findLabelBox(gray, W, H) {
   return x1 > x0 ? { x0, x1, y0, y1 } : null;
 }
 
-function crop(c) {
+const grayOf = (c) => {
   const W = c.width, H = c.height, d = c.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
-  const gray = new Uint8Array(W * H);
-  for (let i = 0; i < W * H; i++) gray[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  const g = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) g[i] = (d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3;
+  return g;
+};
+const sub = (c, x, y, w, h) => {
+  const o = document.createElement('canvas'); o.width = w; o.height = h;
+  o.getContext('2d').drawImage(c, x, y, w, h, 0, 0, w, h);
+  return o;
+};
+
+// Rentang isi di antara celah putih (baris/kolom hampir tanpa tinta) yang cukup lebar.
+function bands(ink, len, minGap) {
+  const out = []; let s = -1, gap = 0;
+  for (let i = 0; i <= len; i++) {
+    if (i < len && ink[i]) { if (s < 0) s = i; gap = 0; continue; }
+    if (s >= 0 && (++gap >= minGap || i === len)) { out.push([s, i - gap]); s = -1; gap = 0; }
+  }
+  return out;
+}
+
+// Satu halaman PDF bisa berisi beberapa label (cetak massal). Pisahkan menurut celah putih,
+// lalu ambil hanya potongan yang punya kotak label bergaris tepi.
+function splitLabels(page) {
+  const W = page.width, H = page.height, g = grayOf(page);
+  const rowInk = Array.from({ length: H }, (_, y) => { let n = 0; for (let x = 0; x < W; x += 2) if (g[y * W + x] < 160) n++; return n > 2; });
+  const out = [];
+  for (const [y0, y1] of bands(rowInk, H, Math.round(H * 0.015))) {
+    const colInk = Array.from({ length: W }, (_, x) => { let n = 0; for (let y = y0; y <= y1; y += 2) if (g[y * W + x] < 160) n++; return n > 2; });
+    for (const [x0, x1] of bands(colInk, W, Math.round(W * 0.02))) {
+      if ((x1 - x0) < W * 0.2 || (y1 - y0) < H * 0.08) continue;
+      const part = sub(page, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+      const b = findLabelBox(grayOf(part), part.width, part.height);
+      if (b?.framed) out.push(part);
+    }
+  }
+  return out.length > 1 ? out : [page];
+}
+
+function crop(c) {
+  const W = c.width, H = c.height, gray = grayOf(c);
   const b = findLabelBox(gray, W, H) || { x0: 0, y0: 0, x1: W - 1, y1: H - 1 };
   const p = 3, x0 = Math.max(0, b.x0 - p), y0 = Math.max(0, b.y0 - p), x1 = Math.min(W - 1, b.x1 + p), y1 = Math.min(H - 1, b.y1 + p);
-  const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
-  o.getContext('2d').drawImage(c, x0, y0, o.width, o.height, 0, 0, o.width, o.height);
-  return o;
+  return sub(c, x0, y0, x1 - x0 + 1, y1 - y0 + 1);
 }
 
 // Putar 90° searah jarum jam: label Shopee yang lebar jadi tegak, supaya di kolom 7 cm isinya ±30% lebih besar.
@@ -149,9 +185,10 @@ function labelItem(page, resi) {
 async function readShopeeLabels(file, onStep) {
   const out = [];
   for (const page of await toCanvases(file)) {
-    onStep?.('Membaca resi…');
-    const c = crop(page);
-    out.push(labelItem(page, await resiOf(c)));
+    for (const part of splitLabels(page)) {
+      onStep?.(`Membaca resi label ${out.length + 1}…`);
+      out.push(labelItem(part, await resiOf(crop(part))));
+    }
   }
   return out;
 }

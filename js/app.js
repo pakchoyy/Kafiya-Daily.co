@@ -8,7 +8,7 @@ import { readAny } from './shopee.js';
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 25; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 26; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -314,12 +314,13 @@ async function viewBaru() {
         <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}${dupe(it, i)}</div>`;
 
   frame('Pesanan baru', `
-    <button class="btn block big" id="up">${ic('download', 20)} Upload screenshot / PDF</button>
-    <input type="file" id="upf" accept="image/*,application/pdf" multiple hidden>
-    <p class="muted" style="margin-top:8px">Bisa campur dan banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>PDF / screenshot label Shopee</b> jadi label Shopee. Tinggal cek hasilnya.</p>
+    <div class="row"><button class="btn big grow" id="up">${ic('camera', 20)} Upload screenshot</button><button class="btn ghost big" id="pdf">${ic('download', 18)} PDF</button></div>
+    <input type="file" id="upf" accept="image/*" multiple hidden>
+    <input type="file" id="pdff" accept="application/pdf,.pdf" multiple hidden>
+    <p class="muted" style="margin-top:8px">Bisa banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>screenshot atau PDF label Shopee</b> jadi label Shopee. PDF diambil dari folder file (misal Download), dan satu halaman berisi beberapa label juga bisa.</p>
     ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn danger sm" id="reset">${ic('trash', 16)} Kosongkan semua</button></div>
     ${items.map(card).join('')}
-    <button class="btn ghost block" id="more">${ic('plus', 18)} Tambah file lagi</button>` : ''}
+    <div class="row" style="margin-top:12px"><button class="btn ghost grow" id="more">${ic('plus', 18)} Tambah screenshot</button><button class="btn ghost grow" id="morepdf">${ic('plus', 18)} Tambah PDF</button></div>` : ''}
     <details class="manual" ${d.manualOpen ? 'open' : ''}><summary>${ic('plus', 18)} Tambah manual / tempel teks chat</summary>
       ${customers.length ? `<label class="f" for="cust">Pelanggan tersimpan</label>
         <select id="cust"><option value="">Pilih pelanggan</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)} · ${esc(c.phone)}</option>`).join('')}</select>` : ''}
@@ -348,6 +349,9 @@ async function viewBaru() {
   // upload otomatis
   $('#up').onclick = () => $('#upf').click();
   $('#more')?.addEventListener('click', () => $('#upf').click());
+  $('#pdf').onclick = () => $('#pdff').click();
+  $('#morepdf')?.addEventListener('click', () => $('#pdff').click());
+  $('#pdff').onchange = (e) => { const files = [...e.target.files]; e.target.value = ''; handleFiles(files); };
   // Tombol + di menu bawah: di halaman ini langsung menambah file ke daftar.
   $('nav .fab').onclick = (e) => { e.preventDefault(); $('#upf').click(); };
   $('#reset')?.addEventListener('click', async () => {
