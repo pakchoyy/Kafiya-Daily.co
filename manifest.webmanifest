@@ -2,7 +2,7 @@
   "name": "Kafiya Daily: Cetak Resi",
   "short_name": "Kafiya",
   "start_url": "./admin.html",
-  "scope": "./",
+  "scope": "./admin",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#FBF5EE",
@@ -28,7 +28,7 @@
     }
   ],
   "share_target": {
-    "action": "./share",
+    "action": "./admin-share",
     "method": "POST",
     "enctype": "multipart/form-data",
     "params": {
