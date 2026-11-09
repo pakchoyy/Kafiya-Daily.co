@@ -1,0 +1,41 @@
+rules_version = '2';
+// Aturan Firestore untuk toko Kafiya Daily.
+// Ganti EMAIL_PEMILIK di bawah dengan email akun pemilik (yang dibuat di Authentication → Users).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner() {
+      return request.auth != null && request.auth.token.email == 'EMAIL_PEMILIK';
+    }
+
+    // Nama toko dan nomor WhatsApp: dibaca pembeli, diubah pemilik.
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    // Produk dan fotonya: semua orang boleh melihat, hanya pemilik yang mengubah.
+    match /products/{id} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+    match /photos/{id} {
+      allow read: if true;
+      allow write: if isOwner();
+    }
+
+    // Pesanan: pembeli hanya boleh membuat pesanan baru dengan isi yang wajar;
+    // membaca, menandai, dan menghapus hanya untuk pemilik.
+    match /orders/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['name', 'phone', 'address', 'pay', 'note', 'items', 'total', 'imported', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() < 100
+        && request.resource.data.phone is string && request.resource.data.phone.size() < 30
+        && request.resource.data.address is string && request.resource.data.address.size() > 0 && request.resource.data.address.size() < 500
+        && request.resource.data.pay in ['cod', 'transfer']
+        && request.resource.data.note is string && request.resource.data.note.size() < 300
+        && request.resource.data.items is list && request.resource.data.items.size() > 0 && request.resource.data.items.size() <= 30
+        && request.resource.data.total is number && request.resource.data.total >= 0
+        && request.resource.data.imported == false;
+      allow read, update, delete: if isOwner();
+    }
+  }
+}

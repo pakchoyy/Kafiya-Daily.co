@@ -1,7 +1,7 @@
 # Kafiya Daily — Cetak Resi
 
 Aplikasi web (PWA, tanpa server) untuk mencetak label pengiriman ke kertas stiker dari HP Android.
-Semua data tersimpan di HP (IndexedDB); tidak ada akun dan tidak ada server.
+Data aplikasi cetak tersimpan di HP (IndexedDB). Toko online memakai Firebase (paket gratis).
 
 ## Fitur
 
@@ -12,6 +12,8 @@ Semua data tersimpan di HP (IndexedDB); tidak ada akun dan tidak ada server.
 - **Cetak**: kolom 7 cm di tengah kertas (A4, F4, atau F4 lewat setelan printer *Indian Legal*), label ditumpuk dari atas,
   jumlah lembar menyesuaikan, garis bantu gunting di sekeliling label. Bisa juga unduh JPG per lembar.
 - **Riwayat**: cari, filter tanggal dan status, pilih banyak (cetak / tandai / hapus), rekap 7 hari.
+- **Toko online** (`/toko/`): katalog untuk pembeli, keranjang, pesan via WhatsApp. Produk dikelola dari menu Produk;
+  pesanan masuk ke Pesanan baru dan stok berkurang otomatis. Penyiapan Firebase: lihat `FIREBASE.md`.
 - **Pengaturan**: data toko, logo, kertas, geser posisi cetak per 1 mm, halaman tes, mode gelap, backup/restore JSON.
 
 ## Menjalankan
@@ -42,6 +44,8 @@ lalu di-cache oleh service worker. Setiap rilis: naikkan `APP_VERSION` di `js/ap
 | `js/barcode.js` | Barcode Code 128 tanpa pustaka |
 | `js/logo.js` | Olah logo (hapus latar putih, versi hitam-putih) |
 | `js/db.js` | IndexedDB, ekspor/impor backup |
+| `js/cloud.js`, `js/firebase-config.js`, `firestore.rules` | Toko online: Firebase, produk, pesanan, aturan akses |
+| `toko/` | Halaman toko untuk pembeli |
 | `sw.js`, `manifest.webmanifest` | PWA, cache offline, *share target* |
 
 ## Catatan cetak

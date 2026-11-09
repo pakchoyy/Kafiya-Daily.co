@@ -1,6 +1,6 @@
-const CACHE = 'kafiya-v29';
+const CACHE = 'kafiya-v30';
 const SHELL = ['./', 'index.html', 'styles.css', 'manifest.webmanifest', 'assets/logo-mark.png', 'assets/logo-full.png', 'icons/icon-192.png',
-  'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js', 'js/ocr.js', 'js/jpg.js', 'js/barcode.js', 'js/shopee.js'];
+  'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js', 'js/ocr.js', 'js/jpg.js', 'js/barcode.js', 'js/shopee.js', 'js/cloud.js', 'js/firebase-config.js'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -23,10 +23,11 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (req.method !== 'GET') return;
+  if (/googleapis\.com|firebaseio\.com|firebaseapp\.com|identitytoolkit/.test(new URL(req.url).hostname)) return;
   // Halaman dan file aplikasi sendiri: jaringan dulu supaya HTML dan JS selalu satu versi; cache hanya saat offline.
   if (req.mode === 'navigate') {
-    e.respondWith(fetch(req).then((r) => { const c = r.clone(); caches.open(CACHE).then((x) => x.put('index.html', c)); return r; })
-      .catch(() => caches.match('index.html')));
+    e.respondWith(fetch(req).then((r) => { const c = r.clone(); caches.open(CACHE).then((x) => x.put(req, c)); return r; })
+      .catch(async () => (await caches.match(req, { ignoreSearch: true })) || caches.match('index.html')));
     return;
   }
   if (new URL(req.url).origin === location.origin) {
