@@ -161,3 +161,14 @@ body.detail { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
   background: var(--lime); color: var(--ink); font-size: 14px; font-weight: 700; box-shadow: 3px 3px 0 var(--ink); opacity: 0; pointer-events: none; transition: opacity .2s, transform .25s; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* ---------- tombol beli & titik COD ---------- */
+.second { flex: none; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 84px; min-height: 54px; padding: 0 12px; border: var(--b); border-radius: 16px; background: var(--card); font-size: 12px; font-weight: 800; cursor: pointer; transition: transform .15s; }
+.second:active { transform: scale(.95); }
+.sz:disabled { opacity: .45; text-decoration: line-through; cursor: not-allowed; }
+.spots { display: grid; gap: 8px; }
+.spots label { margin: 0; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 14px; border: var(--b); border-radius: 12px; background: var(--bg); cursor: pointer; font-weight: 600; }
+.spots input { width: 20px; height: 20px; accent-color: var(--ink); flex: none; }
+.spots label:has(input:checked) { background: var(--lime); }
+.box #bo { margin-top: 8px; }
+.box .note { margin-top: 16px; }

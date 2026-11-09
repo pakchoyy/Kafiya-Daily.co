@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 39; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 40; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -689,7 +689,7 @@ async function tokoOrders() {
     if (!box || !fresh.length) return;
     box.innerHTML = `<button class="btn alt block" id="ambil">${ic('download', 18)} Ambil ${fresh.length} pesanan dari toko online</button>`;
     $('#ambil').onclick = () => {
-      for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address, courier: 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
+      for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address + (o.note ? ` (${o.note})` : ''), courier: o.pay === 'cod' ? COD_SELF : 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
       toast(`${fresh.length} pesanan dari toko masuk daftar. Cek ekspedisi dan ongkirnya ya.`);
       viewBaru();
     };
@@ -891,7 +891,7 @@ async function viewProduk() {
       <button class="kph" data-edit="${p.id}" aria-label="Ubah ${esc(p.name)}">${p.thumb ? `<img src="${p.thumb}" alt="">` : ic('camera', 28)}
         <span class="kst ${!p.active ? 'hid' : p.stock > 0 ? (p.stock <= 2 ? 'low' : '') : 'zero'}">${!p.active ? 'Disembunyikan' : p.stock > 0 ? (p.stock <= 2 ? 'Stok menipis' : 'Tampil') : 'Habis'}</span></button>
       <div class="kin"><b class="ell">${esc(p.name)}</b><span class="kpr">${rupiah(p.price)}</span>
-        <div class="kst2"><button data-st="${p.id}" data-v="-1" aria-label="Kurangi stok ${esc(p.name)}">−</button><b>${p.stock || 0}</b><button data-st="${p.id}" data-v="1" aria-label="Tambah stok ${esc(p.name)}">+</button></div>
+        ${p.variants?.length ? `<div class="kvar">${p.variants.map((v) => `<span class="${v.stock ? '' : 'zero'}">${esc(v.name)} ${v.stock}</span>`).join('')}</div>` : `<div class="kst2"><button data-st="${p.id}" data-v="-1" aria-label="Kurangi stok ${esc(p.name)}">−</button><b>${p.stock || 0}</b><button data-st="${p.id}" data-v="1" aria-label="Tambah stok ${esc(p.name)}">+</button></div>`}
         <label class="ktg"><input type="checkbox" data-act="${p.id}" ${p.active ? 'checked' : ''}> Tampil di toko</label>
         <div class="kbtn"><button class="btn ghost sm" data-edit="${p.id}">${ic('edit', 16)} Edit</button><button class="btn danger sm" data-pdel="${p.id}" aria-label="Hapus ${esc(p.name)}">${ic('trash', 16)}</button></div></div></div>`;
   frame('Katalog', `<div class="row" style="gap:8px"><button class="btn grow" id="padd">${ic('plus', 20)} Tambah produk</button><a class="btn ghost" href="${esc(TOKO_URL)}" target="_blank" rel="noopener" aria-label="Lihat toko">${ic('store', 20)}</a></div>
@@ -937,11 +937,25 @@ async function editProduk(p, list) {
     <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Misal: Gamis"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     <div class="row"><div class="grow"><label class="f" for="pp">Harga (Rp)</label><input type="text" id="pp" inputmode="numeric" value="${p?.price ? p.price.toLocaleString('id-ID') : ''}"></div>
     <div style="width:110px"><label class="f" for="ps">Stok</label><input type="number" id="ps" min="0" value="${p?.stock ?? 1}"></div></div>
+    <label class="f">Varian (warna / motif), masing-masing punya stok</label>
+    <div id="pvl" class="pvl"></div>
+    <button class="btn ghost block" id="pva" type="button">${ic('plus', 18)} Tambah varian</button>
     <label class="f" for="pz">Ukuran (pisahkan dengan koma, kosongkan kalau all size)</label><input type="text" id="pz" value="${esc((p?.sizes || []).join(', '))}" placeholder="S, M, L, XL">
     <label class="f" for="pd">Deskripsi</label><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>
     <div class="row" style="margin-top:12px"><input type="checkbox" id="pa" ${p?.active === false ? '' : 'checked'}><label for="pa">Tampilkan di toko</label></div>
     <button class="btn block" id="psave">Simpan produk</button>
     ${p ? `<button class="btn danger block" id="pdel">${ic('trash', 18)} Hapus produk</button>` : ''}`, (m, close) => {
+    let vars = (p?.variants || []).map((v) => ({ ...v }));
+    const drawVars = () => {
+      $('#pvl', m).innerHTML = vars.map((v, i) => `<div class="pv-row"><input type="text" data-vn="${i}" value="${esc(v.name)}" placeholder="Misal: Hijau" aria-label="Nama varian ${i + 1}"><input type="number" min="0" data-vs="${i}" value="${v.stock}" aria-label="Stok varian ${i + 1}"><button class="icon-btn" type="button" data-vx="${i}" aria-label="Hapus varian ${i + 1}">${ic('trash', 16)}</button></div>`).join('');
+      $$('[data-vn]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vn].name = x.value; });
+      $$('[data-vs]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vs].stock = Math.max(0, Number(x.value) || 0); syncStock(); });
+      $$('[data-vx]', m).forEach((x) => x.onclick = () => { vars.splice(Number(x.dataset.vx), 1); drawVars(); });
+      syncStock();
+    };
+    const syncStock = () => { const s = $('#ps', m); s.disabled = vars.length > 0; if (vars.length) s.value = vars.reduce((a, v) => a + v.stock, 0); };
+    drawVars();
+    $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
     const draw = () => {
       $('#pth', m).innerHTML = cur().map((src, i) => `<span><img src="${src}" alt="Foto ${i + 1}"><button class="icon-btn" data-px="${i}" aria-label="Hapus foto ${i + 1}">${ic('trash', 16)}</button></span>`).join('');
@@ -963,6 +977,8 @@ async function editProduk(p, list) {
       const v = { ...(p || {}), name: $('#pn', m).value.trim(), category: $('#pc', m).value.trim(), price: toCod($('#pp', m).value),
         stock: Number($('#ps', m).value) || 0, sizes: $('#pz', m).value.split(',').map((x) => x.trim()).filter(Boolean),
         desc: $('#pd', m).value.trim(), active: $('#pa', m).checked };
+      v.variants = vars.map((x) => ({ name: x.name.trim(), stock: x.stock })).filter((x) => x.name);
+      if (v.variants.length) v.stock = v.variants.reduce((a, x) => a + x.stock, 0);
       if (!v.name || !v.price) return toast('Nama dan harga wajib diisi.');
       if (!p && !cur().length) return toast('Tambahkan minimal satu foto.');
       const b = $('#psave', m); b.disabled = true; b.textContent = 'Menyimpan…';

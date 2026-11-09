@@ -389,3 +389,11 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .install-slot:not(:empty) { margin-top: 16px; }
 .install { flex-wrap: wrap; }
 .install .btn { margin-left: auto; }
+
+.pvl { display: grid; gap: 8px; }
+.pv-row { display: grid; grid-template-columns: 1fr 76px 44px; gap: 6px; align-items: center; }
+.pvl:empty + #pva { margin-top: 0; }
+#ps:disabled { opacity: .7; }
+.kvar { display: flex; flex-wrap: wrap; gap: 4px; }
+.kvar span { padding: 2px 8px; border: 1.5px solid var(--edge); border-radius: 999px; font-size: 12px; font-weight: 700; }
+.kvar span.zero { background: var(--pink); color: #1E1512; border-color: #1E1512; }
