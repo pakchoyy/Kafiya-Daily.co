@@ -7,11 +7,10 @@ import { readAny } from './shopee.js';
 import * as cloud from './cloud.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', COD_SELF, 'Lainnya'];
-const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 45; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 46; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -143,6 +142,7 @@ const ICON = {
   truck: '<path d="M1 4h13v12H1zM14 8h4l4 4v4h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -362,9 +362,7 @@ async function viewRekap() {
 // ---------- Pesanan ----------
 async function viewPesanan() {
   const orders = (await db.all('orders')).sort((a, b) => b.id - a.id);
-  const days = shop.lastBackup ? (Date.now() - new Date(shop.lastBackup)) / 864e5 : Infinity;
-  const remind = orders.length && days > BACKUP_DAYS
-    ? `<div class="banner row spread"><span>${shop.lastBackup ? `Backup terakhir ${Math.floor(days)} hari lalu.` : 'Data belum pernah di-backup.'}</span><button class="btn sm" id="bknow">${ic('download', 16)} Backup</button></div>` : '';
+
   const todo = orders.filter((o) => !o.printed).length;
   const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
   frame('Pesanan', `<section class="hero">
@@ -379,7 +377,6 @@ async function viewPesanan() {
       <div><b>${today}</b><span>Hari ini</span></div>
       <div><b>${orders.length}</b><span>Total pesanan</span></div>
     </div>
-    ${remind}
     <div id="unpaid">${unpaidHTML(orders)}</div>
     ${orders.length ? recapHTML(orders) : ''}
     <h2>Riwayat pesanan</h2>
@@ -391,7 +388,6 @@ async function viewPesanan() {
     </div>
     <div class="row spread" style="margin:10px 2px"><span class="muted" id="fcount"></span><span class="row" style="gap:6px"><button class="btn danger sm" id="delall">${ic('trash', 16)} Hapus semua</button><button class="btn ghost sm" id="selt">${sel.on ? 'Selesai' : 'Pilih'}</button></span></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
-  $('#bknow')?.addEventListener('click', async () => { await doBackup(); viewPesanan(); });
   // Kartu "COD belum dibayar": tombol Lihat menyaring riwayat ke COD yang belum lunas.
   const refreshUnpaid = () => {
     $('#unpaid').innerHTML = unpaidHTML(orders);
@@ -409,7 +405,7 @@ async function viewPesanan() {
         <div class="muted ell">${metaText(o)} · ${fmtDate(o.createdAt)}</div>
       </a>
       ${orderBtns(o)}
-      <div class="item-chips"><span class="chip st-${stage(o)}">${STAGE[stage(o)]}</span>${o.printed && !o.shipped ? `<button class="chip ship" data-ship="${o.id}">${ic('truck', 14)} Tandai dikirim</button>` : ''}${o.cod ? `<button class="chip cod ${o.paid ? 'paid' : ''}" data-pay="${o.id}" aria-label="Ubah status bayar COD ${esc(rupiah(o.cod))}">${o.paid ? 'COD lunas' : 'COD belum bayar'}</button>` : ''}</div>
+      <div class="item-chips"><span class="chip st-${stage(o)}">${STAGE[stage(o)]}</span>${o.printed && !o.shipped ? `<button class="chip ship" data-ship="${o.id}">${ic('truck', 14)} Tandai dikirim</button>` : ''}${o.cod ? (o.paid ? `<button class="chip cod paid" data-pay="${o.id}" aria-label="Batalkan lunas COD ${esc(rupiah(o.cod))}">${ic('check', 14)} Lunas ${esc(rupiah(o.cod))}</button>` : `<button class="chip paybtn" data-pay="${o.id}">${ic('check', 14)} Tandai lunas ${esc(rupiah(o.cod))}</button>`) : ''}</div>
     </div>`;
   // Saring tanpa render ulang seluruh halaman supaya kolom cari tetap fokus.
   const draw = () => {
@@ -425,7 +421,7 @@ async function viewPesanan() {
     $$('[data-pay]').forEach((b) => b.onclick = async () => {
       const o = orders.find((x) => x.id === Number(b.dataset.pay));
       o.paid = !o.paid; await db.put('orders', o);
-      toast(o.paid ? `COD ${rupiah(o.cod)} dari ${o.name} ditandai lunas.` : `${o.name}: COD kembali belum dibayar.`);
+      toast(o.paid ? `COD ${rupiah(o.cod)} dari ${o.name} lunas, masuk ke Rekap.` : `${o.name}: COD kembali belum dibayar.`);
       draw(); refreshUnpaid();
     });
     $$('[data-sel]').forEach((c) => c.onchange = () => { const id = Number(c.dataset.sel); c.checked ? sel.ids.add(id) : sel.ids.delete(id); bar(); });
