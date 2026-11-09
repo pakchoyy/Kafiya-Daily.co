@@ -124,14 +124,16 @@ async function detail(id) {
   let size = p.sizes?.length === 1 ? p.sizes[0] : '', qty = 1;
   let variant = vars.length === 1 && vars[0].stock > 0 ? vars[0].name : '';
   const left = () => (vars.length ? (vars.find((v) => v.name === variant)?.stock ?? 0) : p.stock || 0);
-  const pics = () => photoCache.get(p.id) || (p.thumb ? [p.thumb] : []);
+  const base = () => photoCache.get(p.id) || (p.thumb ? [p.thumb] : []);
+  // Foto varian terpilih tampil paling depan.
+  const pics = () => { const vt = vars.find((v) => v.name === variant)?.thumb; return vt ? [vt, ...base()] : base(); };
   view.innerHTML = `<div class="dtop"><div class="slides" id="sl"></div><div class="dots" id="dots"></div>
       <a class="back" href="#/" aria-label="Kembali">${I.back}</a>
       <button class="heart ${fav.has(p.id) ? 'on' : ''}" data-fav="${esc(p.id)}" aria-label="Simpan ke favorit" aria-pressed="${fav.has(p.id)}">${I.heart}</button></div>
     <div class="thumbs" id="th"></div>
     <div class="dinfo">${p.category ? `<div class="cat-l">${esc(p.category)}</div>` : ''}<h1>${esc(p.name)}</h1><div class="pr">${rupiah(p.price)}</div>
       ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}
-      ${vars.length ? `<span class="lbl">Pilih varian</span><div class="sizes">${vars.map((v) => `<button class="sz ${v.name === variant ? 'on' : ''}" data-var="${esc(v.name)}" aria-pressed="${v.name === variant}" ${v.stock > 0 ? '' : 'disabled'}>${esc(v.name)}${v.stock > 0 ? '' : ' · habis'}</button>`).join('')}</div>` : ''}
+      ${vars.length ? `<span class="lbl">Pilih varian</span><div class="sizes">${vars.map((v) => `<button class="sz ${v.name === variant ? 'on' : ''}" data-var="${esc(v.name)}" aria-pressed="${v.name === variant}" ${v.stock > 0 ? '' : 'disabled'}>${v.thumb ? `<img src="${v.thumb}" alt="">` : ''}${esc(v.name)}${v.stock > 0 ? '' : ' · habis'}</button>`).join('')}</div>` : ''}
       ${p.sizes?.length ? `<span class="lbl">Ukuran</span><div class="sizes">${p.sizes.map((s) => `<button class="sz ${s === size ? 'on' : ''}" data-size="${esc(s)}" aria-pressed="${s === size}">${esc(s)}</button>`).join('')}</div>` : ''}
       ${p.stock > 0 ? `<span class="lbl">Jumlah</span><div class="stepper"><button data-q="-1" aria-label="Kurangi">−</button><b id="qn">1</b><button data-q="1" aria-label="Tambah">+</button></div> <span class="muted" id="left">${vars.length && !variant ? 'pilih varian dulu' : `stok ${left()}`}</span>`
         : '<p class="note">Stok sedang habis. Tanyakan ketersediaan lewat WhatsApp.</p>'}</div>
@@ -153,7 +155,7 @@ async function detail(id) {
   bindHearts(view);
   const pick = (attr, set) => $$(`[data-${attr}]`).forEach((b) => b.onclick = () => { set(b.dataset[attr]); $$(`[data-${attr}]`).forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); });
   pick('size', (v) => { size = v; });
-  pick('var', (v) => { variant = v; qty = Math.min(qty, Math.max(1, left())); if ($('#qn')) { $('#qn').textContent = qty; $('#left').textContent = `stok ${left()}`; } });
+  pick('var', (v) => { variant = v; drawPics(); $('#sl').scrollTo({ left: 0 }); qty = Math.min(qty, Math.max(1, left())); if ($('#qn')) { $('#qn').textContent = qty; $('#left').textContent = `stok ${left()}`; } });
   $$('[data-q]').forEach((b) => b.onclick = () => { qty = Math.min(Math.max(1, left()), Math.max(1, qty + Number(b.dataset.q))); $('#qn').textContent = qty; });
   const put = () => {
     if (vars.length && !variant) { toast('Pilih varian dulu ya.'); $('[data-var]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return false; }
@@ -204,9 +206,9 @@ function cartPage() {
   const draw = () => {
     const cur = lines();
     if (!cur.length) return cartPage();
-    $('#lines').innerHTML = cur.map((c, i) => `<div class="ci">${c.p.thumb ? `<img src="${c.p.thumb}" alt="">` : '<span style="width:72px"></span>'}
+    $('#lines').innerHTML = cur.map((c, i) => { const th = (c.variant && (c.p.variants || []).find((v) => v.name === c.variant)?.thumb) || c.p.thumb; return `<div class="ci">${th ? `<img src="${th}" alt="">` : '<span style="width:72px"></span>'}
       <div class="grow"><a class="nm" href="#/p/${encodeURIComponent(c.id)}" style="text-decoration:none">${esc(c.p.name)}</a><span class="muted">${[c.variant, c.size ? `Ukuran ${c.size}` : ''].filter(Boolean).map(esc).join(' · ') || 'All size'}</span>
-      <div class="row"><b>${rupiah(c.p.price * c.qty)}</b><div class="stepper"><button data-d="${i}" data-v="-1" aria-label="Kurangi">−</button><b>${c.qty}</b><button data-d="${i}" data-v="1" aria-label="Tambah">+</button></div></div></div></div>`).join('');
+      <div class="row"><b>${rupiah(c.p.price * c.qty)}</b><div class="stepper"><button data-d="${i}" data-v="-1" aria-label="Kurangi">−</button><b>${c.qty}</b><button data-d="${i}" data-v="1" aria-label="Tambah">+</button></div></div></div></div>`; }).join('');
     $('#tot').textContent = rupiah(total());
     $('.tot small').textContent = `Total (${count()} barang)`;
     $$('[data-d]').forEach((btn) => btn.onclick = () => {

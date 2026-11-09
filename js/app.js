@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 41; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 42; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -141,6 +141,7 @@ const ICON = {
   store: '<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   truck: '<path d="M1 4h13v12H1zM14 8h4l4 4v4h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+  mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -925,7 +926,7 @@ async function viewProduk() {
 }
 
 async function editProduk(p, list) {
-  const cats = [...new Set(list.map((x) => x.category).filter(Boolean))];
+  const cats = [...new Set(['Cardigan', 'Sweater', ...list.map((x) => x.category).filter(Boolean)])];
   let photos = null; // null = foto tidak diubah
   const shown = p?.photoCount ? await cloud.getPhotos(p).catch(() => []) : [];
   modal(`<h2>${p ? 'Ubah produk' : 'Produk baru'}</h2>
@@ -933,30 +934,57 @@ async function editProduk(p, list) {
     <div class="pthumbs" id="pth"></div>
     <input type="file" id="pf" accept="image/*" multiple hidden>
     <button class="btn ghost block" id="pfb">${ic('camera', 18)} Pilih foto</button>
-    <label class="f" for="pn">Nama produk</label><input type="text" id="pn" value="${esc(p?.name || '')}">
-    <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Misal: Gamis"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
-    <div class="row"><div class="grow"><label class="f" for="pp">Harga (Rp)</label><input type="text" id="pp" inputmode="numeric" value="${p?.price ? p.price.toLocaleString('id-ID') : ''}"></div>
+    ${SR ? `<button type="button" class="btn alt block" id="pvoice">${ic('mic', 18)} Isi pakai suara</button><p class="muted" style="margin:6px 2px 0">Contoh: “Sweater Love kategori sweater harga 85 ribu stok 5”.</p>` : ''}
+    <label class="f" for="pn">Nama produk</label><div class="withmic"><input type="text" id="pn" value="${esc(p?.name || '')}">${micBtn('pn', 'nama produk')}</div>
+    <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Pilih atau ketik kategori baru"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+    <div class="chips catq">${cats.map((c) => `<button type="button" class="pill ${c === p?.category ? 'on' : ''}" data-cq="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="row"><div class="grow"><label class="f" for="pp">Harga (Rp)</label><div class="withmic"><input type="text" id="pp" inputmode="numeric" value="${p?.price ? p.price.toLocaleString('id-ID') : ''}">${micBtn('pp', 'harga')}</div></div>
     <div style="width:110px"><label class="f" for="ps">Stok</label><input type="number" id="ps" min="0" value="${p?.stock ?? 1}"></div></div>
     <label class="f">Varian (warna / motif), masing-masing punya stok</label>
     <div id="pvl" class="pvl"></div>
     <button class="btn ghost block" id="pva" type="button">${ic('plus', 18)} Tambah varian</button>
     <label class="f" for="pz">Ukuran (pisahkan dengan koma, kosongkan kalau all size)</label><input type="text" id="pz" value="${esc((p?.sizes || []).join(', '))}" placeholder="S, M, L, XL">
-    <label class="f" for="pd">Deskripsi</label><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>
+    <label class="f" for="pd">Deskripsi</label><div class="withmic"><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>${micBtn('pd', 'deskripsi')}</div>
     <div class="row" style="margin-top:12px"><input type="checkbox" id="pa" ${p?.active === false ? '' : 'checked'}><label for="pa">Tampilkan di toko</label></div>
     <button class="btn block" id="psave">Simpan produk</button>
     ${p ? `<button class="btn danger block" id="pdel">${ic('trash', 18)} Hapus produk</button>` : ''}`, (m, close) => {
     let vars = (p?.variants || []).map((v) => ({ ...v }));
     const drawVars = () => {
-      $('#pvl', m).innerHTML = vars.map((v, i) => `<div class="pv-row"><input type="text" data-vn="${i}" value="${esc(v.name)}" placeholder="Misal: Hijau" aria-label="Nama varian ${i + 1}"><input type="number" min="0" data-vs="${i}" value="${v.stock}" aria-label="Stok varian ${i + 1}"><button class="icon-btn" type="button" data-vx="${i}" aria-label="Hapus varian ${i + 1}">${ic('trash', 16)}</button></div>`).join('');
+      $('#pvl', m).innerHTML = vars.map((v, i) => `<div class="pv-row"><button type="button" class="pv-ph" data-vp="${i}" aria-label="Foto varian ${i + 1}">${v.thumb ? `<img src="${v.thumb}" alt="">` : ic('camera', 18)}</button><input type="text" data-vn="${i}" value="${esc(v.name)}" placeholder="Misal: Hijau" aria-label="Nama varian ${i + 1}"><input type="number" min="0" data-vs="${i}" value="${v.stock}" aria-label="Stok varian ${i + 1}"><button class="icon-btn" type="button" data-vx="${i}" aria-label="Hapus varian ${i + 1}">${ic('trash', 16)}</button></div>`).join('');
       $$('[data-vn]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vn].name = x.value; });
       $$('[data-vs]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vs].stock = Math.max(0, Number(x.value) || 0); syncStock(); });
       $$('[data-vx]', m).forEach((x) => x.onclick = () => { vars.splice(Number(x.dataset.vx), 1); drawVars(); });
+      $$('[data-vp]', m).forEach((x) => x.onclick = () => {
+        const f = document.createElement('input'); f.type = 'file'; f.accept = 'image/*';
+        f.onchange = async () => {
+          if (!f.files[0]) return;
+          x.disabled = true;
+          try { vars[x.dataset.vp].thumb = await cloud.shrink(f.files[0], 520, 45e3); drawVars(); }
+          catch (err) { console.error(err); toast('Foto gagal dibaca.', 'err'); x.disabled = false; }
+        };
+        f.click();
+      });
       syncStock();
     };
     const syncStock = () => { const s = $('#ps', m); s.disabled = vars.length > 0; if (vars.length) s.value = vars.reduce((a, v) => a + v.stock, 0); };
     drawVars();
     $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
+    $$('[data-cq]', m).forEach((b) => b.onclick = () => { $('#pc', m).value = b.dataset.cq; $$('[data-cq]', m).forEach((x) => x.classList.toggle('on', x === b)); });
+    $$('[data-mic]', m).forEach((b) => b.onclick = () => listen(b, (t) => {
+      const el = $(`#${b.dataset.mic}`, m);
+      if (el.id === 'pp') { const n = spokenNumber(t); if (n) el.value = n.toLocaleString('id-ID'); else toast(`Harga tidak terbaca dari “${t}”.`, 'warn'); return; }
+      el.value = el.id === 'pd' && el.value ? `${el.value}\n${t}` : t.replace(/^\w/, (c) => c.toUpperCase());
+    }));
+    $('#pvoice', m)?.addEventListener('click', (e) => listen(e.currentTarget, (t) => {
+      const v = parseProductSpeech(t);
+      if (v.name) $('#pn', m).value = v.name.replace(/^\w/, (c) => c.toUpperCase());
+      if (v.category) $('#pc', m).value = v.category;
+      if (v.price) $('#pp', m).value = v.price.toLocaleString('id-ID');
+      if (v.stock != null && !vars.length) $('#ps', m).value = v.stock;
+      if (v.desc) $('#pd', m).value = v.desc;
+      toast(`Terisi dari suara: “${t}”. Cek lagi sebelum simpan.`);
+    }));
     const draw = () => {
       $('#pth', m).innerHTML = cur().map((src, i) => `<span><img src="${src}" alt="Foto ${i + 1}"><button class="icon-btn" data-px="${i}" aria-label="Hapus foto ${i + 1}">${ic('trash', 16)}</button></span>`).join('');
       $$('[data-px]', m).forEach((b) => b.onclick = () => { photos = cur().filter((_, j) => j !== Number(b.dataset.px)); draw(); });
@@ -977,10 +1005,11 @@ async function editProduk(p, list) {
       const v = { ...(p || {}), name: $('#pn', m).value.trim(), category: $('#pc', m).value.trim(), price: toCod($('#pp', m).value),
         stock: Number($('#ps', m).value) || 0, sizes: $('#pz', m).value.split(',').map((x) => x.trim()).filter(Boolean),
         desc: $('#pd', m).value.trim(), active: $('#pa', m).checked };
-      v.variants = vars.map((x) => ({ name: x.name.trim(), stock: x.stock })).filter((x) => x.name);
+      v.variants = vars.map((x) => ({ name: x.name.trim(), stock: x.stock, ...(x.thumb ? { thumb: x.thumb } : {}) })).filter((x) => x.name);
+      if (!p && !cur().length && v.variants[0]?.thumb) photos = [v.variants[0].thumb];
       if (v.variants.length) v.stock = v.variants.reduce((a, x) => a + x.stock, 0);
       if (!v.name || !v.price) return toast('Nama dan harga wajib diisi.');
-      if (!p && !cur().length) return toast('Tambahkan minimal satu foto.');
+      if (!p && !cur().length && !photos) return toast('Tambahkan minimal satu foto.');
       const b = $('#psave', m); b.disabled = true; b.textContent = 'Menyimpan…';
       try { await cloud.saveProduct(v, photos); close(); toast('Produk disimpan.'); viewProduk(); }
       catch (err) { console.error(err); toast('Gagal menyimpan produk. Periksa internet.', 'err'); b.disabled = false; b.textContent = 'Simpan produk'; }
@@ -1094,6 +1123,56 @@ async function render() {
   }
 }
 
+
+// ---------- Input suara (Web Speech API, bahasa Indonesia) ----------
+// Tersedia di Chrome Android. Kalau browser tidak mendukung, tombol mic tidak ditampilkan.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const micBtn = (target, label) => (SR ? `<button type="button" class="mic" data-mic="${target}" aria-label="Isi ${label} pakai suara">${ic('mic', 18)}</button>` : '');
+function listen(btn, onText) {
+  if (!SR) return;
+  const r = new SR(); r.lang = 'id-ID'; r.interimResults = false; r.maxAlternatives = 1;
+  btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true');
+  const stop = () => { btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false'); };
+  r.onresult = (e) => onText(e.results[0][0].transcript.trim());
+  r.onerror = (e) => { stop(); toast(e.error === 'not-allowed' ? 'Izinkan mikrofon di browser dulu.' : e.error === 'no-speech' ? 'Suara tidak terdengar. Coba lagi.' : 'Suara gagal dikenali.', 'warn'); };
+  r.onend = stop;
+  try { r.start(); } catch { stop(); }
+}
+// Angka dari ucapan: "85 ribu", "85.000", "seratus dua puluh ribu" (angka kata sederhana).
+const WORDN = { nol: 0, satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9, };
+function spokenNumber(t) {
+  t = t.toLowerCase().replace(/rupiah|rp\.?/g, '').trim();
+  if (/\d/.test(t)) {
+    const n = Number(t.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+    return /ribu|rb|k\b/.test(t) && n < 10000 ? Math.round(n * 1000) : /juta/.test(t) && n < 1000 ? Math.round(n * 1e6) : Math.round(n);
+  }
+  // d = angka satuan yang sedang menunggu pengali (puluh/belas/ratus), cur = nilai di bawah seribu.
+  let total = 0, cur = 0, d = 0;
+  for (const w of t.split(/\s+/)) {
+    if (w === 'seribu') total += 1000;
+    else if (w === 'seratus') cur += 100;
+    else if (w === 'sepuluh') cur += 10;
+    else if (w === 'sebelas') cur += 11;
+    else if (w in WORDN) d = WORDN[w];
+    else if (w === 'belas') { cur += 10 + d; d = 0; }
+    else if (w === 'puluh') { cur += d * 10; d = 0; }
+    else if (w === 'ratus') { cur += d * 100; d = 0; }
+    else if (w === 'ribu' || w === 'juta') { total += (cur + d || 1) * (w === 'ribu' ? 1000 : 1e6); cur = 0; d = 0; }
+  }
+  return total + cur + d;
+}
+// "Sweater Love kategori sweater harga 85 ribu stok 5" -> isian produk.
+function parseProductSpeech(t) {
+  const out = {}, low = t.toLowerCase();
+  const grab = (key) => { const m = low.match(new RegExp(`${key}\\s+(.+?)(?=\\s+(harga|stok|kategori|deskripsi)\\b|$)`)); return m ? t.substr(m.index + m[0].length - m[1].length, m[1].length).trim() : ''; };
+  const first = low.search(/\b(harga|stok|kategori|deskripsi)\b/);
+  out.name = (first < 0 ? t : t.slice(0, first)).trim();
+  const h = grab('harga'); if (h) out.price = spokenNumber(h);
+  const s = grab('stok'); if (s) out.stock = spokenNumber(s);
+  const k = grab('kategori'); if (k) out.category = k.replace(/^\w/, (c) => c.toUpperCase());
+  const d = grab('deskripsi'); if (d) out.desc = d;
+  return out;
+}
 
 // ---------- Kunci admin ----------
 // Admin hanya terbuka untuk akun pemilik. Tanpa internet, HP yang pernah login tetap boleh masuk
