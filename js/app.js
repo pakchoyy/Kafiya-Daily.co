@@ -10,7 +10,7 @@ const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', COD_SELF, 'Lainnya'];
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 46; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 47; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -175,9 +175,9 @@ function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}
   </header>
   <main>${hero ? '' : `<p class="eyebrow">${esc(EYEBROW[title] || '')}</p><h1 class="display">${esc(title)}</h1>`}${body}</main>
   <nav class="bottom">
-    ${[['home', '', 'home', 'Beranda'], ['pesanan', 'pesanan', 'list', 'Pesanan'], ['baru', 'baru', 'plus', 'Baru'], ['rekap', 'rekap', 'chart', 'Rekap'], ['produk', 'produk', 'bag', 'Katalog']]
-      .map(([k, h, i, l]) => k === 'baru'
-        ? `<a href="#/baru" class="fab ${nav === k ? 'on' : ''}" aria-label="Pesanan baru"><span class="fab-in">${ic(i, 26)}</span></a>`
+    ${[['home', '', 'home', 'Beranda'], ['pesanan', 'pesanan', 'list', 'Pesanan'], ['cetak', 'cetak', 'printer', 'Cetak'], ['rekap', 'rekap', 'chart', 'Rekap'], ['produk', 'produk', 'bag', 'Katalog']]
+      .map(([k, h, i, l]) => k === 'cetak'
+        ? `<a href="#/cetak" class="fab ${nav === k ? 'on' : ''}" aria-label="Cetak label"><span class="fab-in">${ic(i, 26)}</span></a>`
         : `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
   </nav>`;
   bindInstall();
@@ -363,22 +363,9 @@ async function viewRekap() {
 async function viewPesanan() {
   const orders = (await db.all('orders')).sort((a, b) => b.id - a.id);
 
-  const todo = orders.filter((o) => !o.printed).length;
-  const today = orders.filter((o) => new Date(o.createdAt).toDateString() === new Date().toDateString()).length;
-  frame('Pesanan', `<section class="hero">
-      <p class="eyebrow light">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })} · Teman Outfit Harianmu</p>
-      ${todo ? `<div class="hero-focus"><b>${todo}</b><h1 class="display" style="margin:6px 0 14px">label belum dicetak</h1></div>
-      <div class="row"><a class="btn sand grow" href="#/cetak">${ic('printer', 18)} Cetak sekarang</a><a class="btn ghost" href="#/baru">${ic('plus', 18)} Baru</a></div>`
-      : `<h1 class="display" style="margin:6px 0 14px">Semua label sudah dicetak.</h1>
-      <a class="btn sand" href="#/baru">${ic('plus', 18)} Pesanan baru</a>`}
-    </section>
-    <div class="stats">
-      <div><b>${orders.length - todo}</b><span>Sudah dicetak</span></div>
-      <div><b>${today}</b><span>Hari ini</span></div>
-      <div><b>${orders.length}</b><span>Total pesanan</span></div>
-    </div>
-    <div id="unpaid">${unpaidHTML(orders)}</div>
+  frame('Pesanan', `<div class="ph-head"><h1 class="display">Pesanan</h1><a class="btn sm" href="#/baru">${ic('plus', 16)} Pesanan baru</a></div>
     ${orders.length ? recapHTML(orders) : ''}
+    <div id="unpaid">${unpaidHTML(orders)}</div>
     <h2>Riwayat pesanan</h2>
     ${orders.length ? `<div class="filters">
       <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
@@ -684,8 +671,18 @@ async function tokoOrders() {
     const taken = new Set(draft.items.filter((it) => it.web).map((it) => it.web.id));
     const fresh = (await cloud.listNewOrders()).filter((o) => !taken.has(o.id));
     const box = $('#tokobox');
-    if (!box || !fresh.length) return;
-    box.innerHTML = `<button class="btn alt block" id="ambil">${ic('download', 18)} Ambil ${fresh.length} pesanan dari toko online</button>`;
+    if (!box || !fresh.length) { if (box) box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="tokolist"><b>Pesanan dari toko online</b>${fresh.map((o) => `<div class="trow"><div class="grow"><b>${esc(o.name)}</b> · ${rupiah(o.total)}<div class="muted ell">${esc(o.items.map((it) => `${it.name}${it.variant ? ` (${it.variant})` : ''} x${it.qty}`).join(', '))}</div></div><button class="icon-btn" data-tdel="${o.id}" aria-label="Hapus pesanan ${esc(o.name)}">${ic('trash', 18)}</button></div>`).join('')}
+      <button class="btn alt block" id="ambil">${ic('download', 18)} Ambil ${fresh.length} pesanan</button><button class="btn danger block" id="tdelall">${ic('trash', 16)} Hapus semua pesanan toko</button></div>`;
+    const del = async (list) => {
+      try { for (const o of list) await cloud.deleteOrder(o.id); toast(`${list.length} pesanan toko dihapus.`); tokoOrders(); }
+      catch (e) { console.error(e); toast('Gagal menghapus. Periksa internet.', 'err'); }
+    };
+    $$('[data-tdel]').forEach((b) => b.onclick = async () => {
+      const o = fresh.find((x) => x.id === b.dataset.tdel);
+      if (await ask(`Hapus pesanan ${o.name}?`, 'Pesanan ini hilang dari toko online dan tidak bisa dikembalikan. Stok tidak berubah.', { ok: 'Hapus', danger: true })) del([o]);
+    });
+    $('#tdelall').onclick = async () => { if (await ask(`Hapus ${fresh.length} pesanan toko?`, 'Cocok untuk membersihkan pesanan uji coba. Stok tidak berubah.', { ok: 'Hapus semua', danger: true })) del(fresh); };
     $('#ambil').onclick = () => {
       for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address + (o.note?.replace(/( · )?Setuju syarat PO.*$/, '') ? ` (${o.note.replace(/( · )?Setuju syarat PO.*$/, '')})` : ''), courier: o.pay === 'cod' ? COD_SELF : 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
       toast(`${fresh.length} pesanan dari toko masuk daftar. Cek ekspedisi dan ongkirnya ya.`);

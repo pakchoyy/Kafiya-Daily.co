@@ -445,3 +445,8 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 
 .chip.paybtn { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px; background: var(--lime); color: #1E1512; border-color: #1E1512; font-weight: 800; cursor: pointer; }
 .chip.cod.paid { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; }
+
+.ph-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.ph-head .display { margin: 0; }
+.tokolist { margin-top: 14px; padding: 12px 14px; border: 2px solid var(--edge); border-radius: 18px; background: var(--card); }
+.trow { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--tint); }
