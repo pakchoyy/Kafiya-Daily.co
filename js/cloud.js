@@ -106,6 +106,11 @@ export async function createOrder(o) {
   return ref.id;
 }
 
+export async function deleteOrder(id) {
+  const { fs, db } = await fb();
+  await fs.deleteDoc(fs.doc(db, 'orders', id));
+}
+
 export async function listNewOrders() {
   const { fs, db } = await fb();
   const q = fs.query(fs.collection(db, 'orders'), fs.where('imported', '==', false));

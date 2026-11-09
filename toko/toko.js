@@ -24,6 +24,7 @@ function toast(msg) {
 }
 
 const I = {
+  cam: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
   arrow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
   grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>',
   bag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8h13l-.9 11.1a2 2 0 0 1-2 1.9H8.4a2 2 0 0 1-2-1.9z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/></svg>',
@@ -135,6 +136,7 @@ async function detail(id) {
       <a class="back" href="#/" aria-label="Kembali">${I.back}</a>
       <button class="heart ${fav.has(p.id) ? 'on' : ''}" data-fav="${esc(p.id)}" aria-label="Simpan ke favorit" aria-pressed="${fav.has(p.id)}">${I.heart}</button></div>
     <div class="thumbs" id="th"></div>
+    ${navigator.mediaDevices?.getUserMedia ? `<button class="tryon" id="try">${I.cam} Coba pakai kamera</button>` : ''}
     <div class="dinfo">${p.category ? `<div class="cat-l">${esc(p.category)}</div>` : ''}<h1>${esc(p.name)}</h1><div class="pr">${rupiah(p.price)}</div>
       ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}
       ${vars.length ? `<span class="lbl">Pilih varian</span><div class="sizes">${vars.map((v) => `<button class="sz ${v.name === variant ? 'on' : ''}" data-var="${esc(v.name)}" aria-pressed="${v.name === variant}" ${p.po || v.stock > 0 ? '' : 'disabled'}>${v.thumb ? `<img src="${v.thumb}" alt="">` : ''}${esc(v.name)}${p.po || v.stock > 0 ? '' : ' · habis'}</button>`).join('')}</div>` : ''}
@@ -170,11 +172,57 @@ async function detail(id) {
     save(KEY.cart, cart); badge(); return true;
   };
   $('#add')?.addEventListener('click', () => { if (put()) toast(`Masuk keranjang (${count()} barang).`); });
+  $('#try')?.addEventListener('click', () => tryOn(pics()[Math.round($('#sl').scrollLeft / $('#sl').clientWidth)] || pics()[0], p.name));
   $('#buy')?.addEventListener('click', () => { if (put()) location.hash = '#/keranjang'; });
   if (p.photoCount && !photoCache.has(p.id)) {
     const got = await getPhotos(p).catch(() => []);
     if (got.length) { photoCache.set(p.id, got); if (location.hash === `#/p/${encodeURIComponent(p.id)}`) drawPics(); }
   }
+}
+
+// ---------- coba baju pakai kamera ----------
+// Kamera depan + foto baju ditempel di atasnya. Baju bisa digeser (seret), diperbesar (slider),
+// dan dibuat transparan, lalu hasilnya disimpan sebagai foto. Ini cermin bantu, bukan AR penuh.
+async function tryOn(src, name) {
+  if (!src) return toast('Produk ini belum punya foto.');
+  let stream, facing = 'user';
+  const o = document.createElement('div');
+  o.className = 'try';
+  o.innerHTML = `<div class="try-stage"><video playsinline muted autoplay></video><img class="try-cloth" src="${src}" alt="${esc(name)}"></div>
+    <div class="try-ui"><p>Seret baju ke badan, atur ukuran dan tembus pandang.</p>
+      <label>Ukuran<input type="range" id="tsz" min="20" max="140" value="60"></label>
+      <label>Tembus pandang<input type="range" id="top" min="30" max="100" value="85"></label>
+      <div class="try-btns"><button id="tflip">Balik kamera</button><button id="tshot" class="go">Simpan foto</button><button id="tclose">Tutup</button></div></div>`;
+  document.body.append(o); document.body.style.overflow = 'hidden';
+  const v = o.querySelector('video'), img = o.querySelector('.try-cloth'), stage = o.querySelector('.try-stage');
+  let x = 0.5, y = 0.55; // posisi tengah baju, relatif terhadap layar
+  const place = () => { img.style.left = `${x * 100}%`; img.style.top = `${y * 100}%`; img.style.width = `${o.querySelector('#tsz').value}%`; img.style.opacity = o.querySelector('#top').value / 100; };
+  const start = async () => {
+    stream?.getTracks().forEach((t) => t.stop());
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false }); v.srcObject = stream; v.classList.toggle('mirror', facing === 'user'); }
+    catch (e) { console.error(e); toast('Kamera tidak bisa dibuka. Izinkan kamera untuk situs ini.'); }
+  };
+  const close = () => { stream?.getTracks().forEach((t) => t.stop()); o.remove(); document.body.style.overflow = ''; };
+  img.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); img.setPointerCapture(e.pointerId);
+    const r = stage.getBoundingClientRect();
+    const move = (ev) => { x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)); place(); };
+    img.onpointermove = move; img.onpointerup = () => { img.onpointermove = null; };
+  });
+  o.querySelector('#tsz').oninput = place; o.querySelector('#top').oninput = place;
+  o.querySelector('#tflip').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; start(); };
+  o.querySelector('#tclose').onclick = close;
+  o.querySelector('#tshot').onclick = () => {
+    const r = stage.getBoundingClientRect(), c = document.createElement('canvas');
+    c.width = Math.round(r.width * 2); c.height = Math.round(r.height * 2);
+    const g = c.getContext('2d'), vw = v.videoWidth || 1, vh = v.videoHeight || 1, k = Math.max(c.width / vw, c.height / vh);
+    g.save(); if (facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }
+    g.drawImage(v, (c.width - vw * k) / 2, (c.height - vh * k) / 2, vw * k, vh * k); g.restore();
+    const w = c.width * o.querySelector('#tsz').value / 100, h = w * (img.naturalHeight / img.naturalWidth);
+    g.globalAlpha = o.querySelector('#top').value / 100; g.drawImage(img, x * c.width - w / 2, y * c.height - h / 2, w, h);
+    c.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `coba-${name.replace(/\W+/g, '-').toLowerCase()}.jpg`; a.click(); toast('Foto tersimpan di HP.'); }, 'image/jpeg', 0.9);
+  };
+  place(); start();
 }
 
 // ---------- favorit ----------
