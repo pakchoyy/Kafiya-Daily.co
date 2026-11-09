@@ -75,7 +75,7 @@ export async function saveProduct(p, photos) {
   const ref = p.id ? fs.doc(db, 'products', p.id) : fs.doc(fs.collection(db, 'products'));
   const data = {
     name: p.name, category: p.category || '', desc: p.desc || '', price: Number(p.price) || 0,
-    sizes: p.sizes || [], stock: Math.max(0, Number(p.stock) || 0), active: p.active !== false,
+    sizes: p.sizes || [], variants: p.variants || [], stock: Math.max(0, Number(p.stock) || 0), active: p.active !== false,
     sort: p.sort || Date.now(), updatedAt: Date.now(),
   };
   if (photos) {
@@ -117,11 +117,17 @@ export async function markImported(order) {
   const { fs, db } = await fb();
   const batch = fs.writeBatch(db);
   batch.update(fs.doc(db, 'orders', order.id), { imported: true });
-  const qty = new Map();
-  for (const it of order.items || []) qty.set(it.id, (qty.get(it.id) || 0) + (Number(it.qty) || 0));
-  for (const [id, n] of qty) {
+  // Kurangi stok; untuk produk bervarian, stok varian yang dipesan ikut berkurang dan totalnya dihitung ulang.
+  const byId = new Map();
+  for (const it of order.items || []) { const a = byId.get(it.id) || []; a.push(it); byId.set(it.id, a); }
+  for (const [id, its] of byId) {
     const snap = await fs.getDoc(fs.doc(db, 'products', id));
-    if (snap.exists()) batch.update(snap.ref, { stock: Math.max(0, (snap.data().stock || 0) - n) });
+    if (!snap.exists()) continue;
+    const d = snap.data(), n = its.reduce((a, it) => a + (Number(it.qty) || 0), 0);
+    if (d.variants?.length) {
+      const variants = d.variants.map((v) => ({ ...v, stock: Math.max(0, v.stock - its.filter((it) => it.variant === v.name).reduce((a, it) => a + (Number(it.qty) || 0), 0)) }));
+      batch.update(snap.ref, { variants, stock: variants.reduce((a, v) => a + v.stock, 0) });
+    } else batch.update(snap.ref, { stock: Math.max(0, (d.stock || 0) - n) });
   }
   await batch.commit();
 }
