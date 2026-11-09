@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 42; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 43; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -141,6 +141,7 @@ const ICON = {
   store: '<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/>',
   chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
   truck: '<path d="M1 4h13v12H1zM14 8h4l4 4v4h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   mic: '<rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5M8 22h8"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
@@ -934,7 +935,7 @@ async function editProduk(p, list) {
     <div class="pthumbs" id="pth"></div>
     <input type="file" id="pf" accept="image/*" multiple hidden>
     <button class="btn ghost block" id="pfb">${ic('camera', 18)} Pilih foto</button>
-    ${SR ? `<button type="button" class="btn alt block" id="pvoice">${ic('mic', 18)} Isi pakai suara</button><p class="muted" style="margin:6px 2px 0">Contoh: “Sweater Love kategori sweater harga 85 ribu stok 5”.</p>` : ''}
+    ${SR ? `<button type="button" class="btn alt block" id="pvoice">${ic('mic', 18)} Isi pakai suara</button><p class="muted" style="margin:6px 2px 0">Ditanya satu per satu: nama, kategori, harga, stok.</p>` : ''}
     <label class="f" for="pn">Nama produk</label><div class="withmic"><input type="text" id="pn" value="${esc(p?.name || '')}">${micBtn('pn', 'nama produk')}</div>
     <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Pilih atau ketik kategori baru"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     <div class="chips catq">${cats.map((c) => `<button type="button" class="pill ${c === p?.category ? 'on' : ''}" data-cq="${esc(c)}">${esc(c)}</button>`).join('')}</div>
@@ -971,20 +972,26 @@ async function editProduk(p, list) {
     $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
     $$('[data-cq]', m).forEach((b) => b.onclick = () => { $('#pc', m).value = b.dataset.cq; $$('[data-cq]', m).forEach((x) => x.classList.toggle('on', x === b)); });
-    $$('[data-mic]', m).forEach((b) => b.onclick = () => listen(b, (t) => {
-      const el = $(`#${b.dataset.mic}`, m);
-      if (el.id === 'pp') { const n = spokenNumber(t); if (n) el.value = n.toLocaleString('id-ID'); else toast(`Harga tidak terbaca dari “${t}”.`, 'warn'); return; }
-      el.value = el.id === 'pd' && el.value ? `${el.value}\n${t}` : t.replace(/^\w/, (c) => c.toUpperCase());
-    }));
-    $('#pvoice', m)?.addEventListener('click', (e) => listen(e.currentTarget, (t) => {
-      const v = parseProductSpeech(t);
-      if (v.name) $('#pn', m).value = v.name.replace(/^\w/, (c) => c.toUpperCase());
-      if (v.category) $('#pc', m).value = v.category;
-      if (v.price) $('#pp', m).value = v.price.toLocaleString('id-ID');
-      if (v.stock != null && !vars.length) $('#ps', m).value = v.stock;
-      if (v.desc) $('#pd', m).value = v.desc;
-      toast(`Terisi dari suara: “${t}”. Cek lagi sebelum simpan.`);
-    }));
+    const num = (t) => spokenNumber(t) || null;
+    const STEP = {
+      pn: { key: 'pn', ask: 'Nama produknya apa?', hint: 'Contoh: Cardigan Rajut', parse: cap, show: (v) => v },
+      pc: { key: 'pc', ask: 'Kategorinya apa?', hint: 'Contoh: Cardigan atau Sweater', parse: cap, show: (v) => v },
+      pp: { key: 'pp', ask: 'Harganya berapa?', hint: 'Contoh: 85 ribu', parse: num, show: (v) => rupiah(v) },
+      ps: { key: 'ps', ask: 'Stoknya berapa?', hint: 'Contoh: 5', parse: num, show: (v) => `${v} pcs` },
+      pd: { key: 'pd', ask: 'Ceritakan produknya', hint: 'Bahan, ukuran, warna. Boleh panjang.', parse: (t) => t, show: (v) => v },
+    };
+    const fill = (out) => {
+      for (const [k, v] of Object.entries(out)) {
+        const el = $(`#${k}`, m);
+        if (k === 'pp') el.value = v.toLocaleString('id-ID');
+        else if (k === 'pd') el.value = el.value ? `${el.value}\n${v}` : v;
+        else if (k === 'ps') { if (!vars.length) el.value = v; }
+        else el.value = v;
+      }
+      if (Object.keys(out).length) toast('Terisi dari suara. Cek lagi sebelum simpan.');
+    };
+    $$('[data-mic]', m).forEach((b) => b.onclick = () => voiceDialog([STEP[b.dataset.mic]], fill));
+    $('#pvoice', m)?.addEventListener('click', () => voiceDialog(['pn', 'pc', 'pp', ...(vars.length ? [] : ['ps'])].map((k) => STEP[k]), fill));
     const draw = () => {
       $('#pth', m).innerHTML = cur().map((src, i) => `<span><img src="${src}" alt="Foto ${i + 1}"><button class="icon-btn" data-px="${i}" aria-label="Hapus foto ${i + 1}">${ic('trash', 16)}</button></span>`).join('');
       $$('[data-px]', m).forEach((b) => b.onclick = () => { photos = cur().filter((_, j) => j !== Number(b.dataset.px)); draw(); });
@@ -1128,16 +1135,57 @@ async function render() {
 // Tersedia di Chrome Android. Kalau browser tidak mendukung, tombol mic tidak ditampilkan.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const micBtn = (target, label) => (SR ? `<button type="button" class="mic" data-mic="${target}" aria-label="Isi ${label} pakai suara">${ic('mic', 18)}</button>` : '');
-function listen(btn, onText) {
-  if (!SR) return;
-  const r = new SR(); r.lang = 'id-ID'; r.interimResults = false; r.maxAlternatives = 1;
-  btn.classList.add('on'); btn.setAttribute('aria-pressed', 'true');
-  const stop = () => { btn.classList.remove('on'); btn.setAttribute('aria-pressed', 'false'); };
-  r.onresult = (e) => onText(e.results[0][0].transcript.trim());
-  r.onerror = (e) => { stop(); toast(e.error === 'not-allowed' ? 'Izinkan mikrofon di browser dulu.' : e.error === 'no-speech' ? 'Suara tidak terdengar. Coba lagi.' : 'Suara gagal dikenali.', 'warn'); };
-  r.onend = stop;
-  try { r.start(); } catch { stop(); }
+
+// Panel suara: tanya satu per satu, tampilkan status jelas (siap / mendengarkan / hasil),
+// tombol besar Mulai-Berhenti, teks muncul saat bicara, lalu Pakai / Ulangi / Lewati.
+// steps: [{ key, ask, hint, parse(text) -> nilai | null, show(nilai) -> teks }]
+function voiceDialog(steps, onDone) {
+  const o = document.createElement('div');
+  o.className = 'overlay center';
+  o.innerHTML = '<div class="dialog vdlg" role="dialog" aria-modal="true" aria-labelledby="vq"></div>';
+  document.body.append(o);
+  const box = o.firstChild, out = {};
+  let i = 0, rec = null, heard = '', val = null, state = 'idle';
+  const close = trapFocus(o, () => { rec?.abort?.(); o.remove(); });
+  const finish = () => { rec?.abort?.(); close(); onDone(out); };
+  const render = () => {
+    const s = steps[i];
+    box.innerHTML = `<div class="vstep">${steps.length > 1 ? `Langkah ${i + 1} dari ${steps.length}` : 'Isi pakai suara'}</div>
+      <h3 id="vq">${esc(s.ask)}</h3><p class="vhint">${esc(s.hint || '')}</p>
+      <button type="button" class="vmic ${state}" id="vgo" aria-label="${state === 'listen' ? 'Berhenti mendengarkan' : 'Mulai bicara'}">${ic(state === 'listen' ? 'stop' : 'mic', 34)}</button>
+      <div class="vstate" aria-live="polite">${state === 'listen' ? '<b>Mendengarkan…</b> bicara sekarang, ketuk tombol untuk berhenti' : state === 'done' ? (val == null ? '<b>Belum terbaca.</b> Ketuk mic untuk ulangi.' : '<b>Hasil:</b> kalau salah, ketuk mic untuk ulangi') : 'Ketuk tombol mic lalu bicara'}</div>
+      <div class="vtext ${heard ? '' : 'empty'}">${heard ? esc(state === 'done' && val != null ? s.show(val) : heard) : '…'}</div>
+      <div class="vbtns">
+        ${state === 'done' && val != null ? `<button type="button" class="btn" id="vok">${i < steps.length - 1 ? 'Pakai, lanjut' : 'Pakai, selesai'}</button>` : ''}
+        <button type="button" class="btn ghost" id="vskip">${i < steps.length - 1 ? 'Lewati' : 'Selesai'}</button>
+        <button type="button" class="btn ghost" id="vclose">Tutup</button>
+      </div>`;
+    $('#vgo', box).onclick = () => (state === 'listen' ? rec?.stop() : start());
+    $('#vok', box)?.addEventListener('click', () => { out[s.key] = val; next(); });
+    $('#vskip', box).onclick = next;
+    $('#vclose', box).onclick = () => { rec?.abort?.(); close(); if (Object.keys(out).length) onDone(out); };
+    $('#vgo', box).focus();
+  };
+  const next = () => { if (++i >= steps.length) return finish(); heard = ''; val = null; state = 'idle'; render(); start(); };
+  const start = () => {
+    rec?.abort?.();
+    rec = new SR(); rec.lang = 'id-ID'; rec.interimResults = true; rec.maxAlternatives = 1;
+    heard = ''; val = null; state = 'listen'; render();
+    rec.onresult = (e) => {
+      heard = [...e.results].map((r) => r[0].transcript).join(' ').trim();
+      const t = $('.vtext', box); if (t) { t.textContent = heard; t.classList.remove('empty'); }
+    };
+    rec.onerror = (e) => {
+      if (e.error === 'aborted') return;
+      toast(e.error === 'not-allowed' ? 'Izinkan mikrofon untuk situs ini dulu (ikon gembok di alamat browser).' : e.error === 'no-speech' ? 'Suara tidak terdengar. Coba dekatkan HP lalu ulangi.' : 'Suara gagal dikenali. Periksa internet.', 'warn');
+    };
+    rec.onend = () => { if (state !== 'listen') return; state = 'done'; val = heard ? steps[i].parse(heard) : null; render(); };
+    try { rec.start(); } catch (err) { console.error(err); state = 'idle'; render(); }
+  };
+  render();
+  start();
 }
+const cap = (t) => t.replace(/^\w/, (c) => c.toUpperCase());
 // Angka dari ucapan: "85 ribu", "85.000", "seratus dua puluh ribu" (angka kata sederhana).
 const WORDN = { nol: 0, satu: 1, dua: 2, tiga: 3, empat: 4, lima: 5, enam: 6, tujuh: 7, delapan: 8, sembilan: 9, };
 function spokenNumber(t) {
@@ -1160,18 +1208,6 @@ function spokenNumber(t) {
     else if (w === 'ribu' || w === 'juta') { total += (cur + d || 1) * (w === 'ribu' ? 1000 : 1e6); cur = 0; d = 0; }
   }
   return total + cur + d;
-}
-// "Sweater Love kategori sweater harga 85 ribu stok 5" -> isian produk.
-function parseProductSpeech(t) {
-  const out = {}, low = t.toLowerCase();
-  const grab = (key) => { const m = low.match(new RegExp(`${key}\\s+(.+?)(?=\\s+(harga|stok|kategori|deskripsi)\\b|$)`)); return m ? t.substr(m.index + m[0].length - m[1].length, m[1].length).trim() : ''; };
-  const first = low.search(/\b(harga|stok|kategori|deskripsi)\b/);
-  out.name = (first < 0 ? t : t.slice(0, first)).trim();
-  const h = grab('harga'); if (h) out.price = spokenNumber(h);
-  const s = grab('stok'); if (s) out.stock = spokenNumber(s);
-  const k = grab('kategori'); if (k) out.category = k.replace(/^\w/, (c) => c.toUpperCase());
-  const d = grab('deskripsi'); if (d) out.desc = d;
-  return out;
 }
 
 // ---------- Kunci admin ----------
