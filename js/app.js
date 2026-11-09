@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 33; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 34; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;

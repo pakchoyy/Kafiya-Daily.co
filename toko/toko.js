@@ -24,10 +24,13 @@ function toast(msg) {
 }
 
 const I = {
-  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>',
+  bag: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8h13l-.9 11.1a2 2 0 0 1-2 1.9H8.4a2 2 0 0 1-2-1.9z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/></svg>',
+  heart: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20.5s-8.5-5.1-8.5-11.2A4.6 4.6 0 0 1 12 6.6a4.6 4.6 0 0 1 8.5 2.7c0 6.1-8.5 11.2-8.5 11.2z"/></svg>',
   back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
-  wa: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l1.3-3.9A8 8 0 1 1 8 19z"/></svg>',
+  wa: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 11.6a8.5 8.5 0 0 1-12.5 7.5L3.5 20.5l1.4-4.3a8.5 8.5 0 1 1 15.6-4.6z"/><path d="M9 8.5c0 3.5 2.6 6.4 6 6.6l1-1.6-2-1-.9.9a4 4 0 0 1-2.1-2.1l.9-.9-1-2z"/></svg>',
 };
 
 // ---------- data ----------
@@ -87,22 +90,22 @@ function home() {
   const cats = [...new Set(products.map((p) => p.category).filter(Boolean))];
   const newest = products.find((p) => p.thumb && p.stock > 0) || products[0];
   view.innerHTML = `${newest ? `<section class="hero">
-      <div class="tx"><span class="eb">Koleksi terbaru</span><h1>${esc(newest.name)}</h1>
+      <div class="tx"><span class="eb">Baru drop</span><h1>${esc(newest.name)}</h1>
         <p>${esc(shop?.about || 'Teman outfit harianmu.')}</p>
-        <a class="cta" href="#/p/${encodeURIComponent(newest.id)}">Lihat produk</a></div>
+        <a class="cta" href="#/p/${encodeURIComponent(newest.id)}">Cek sekarang ${I.arrow}</a></div>
       <div class="ph">${newest.thumb ? `<img src="${newest.thumb}" alt="">` : ''}</div></section>` : ''}
     ${cats.length > 1 ? `<div class="sec"><h2>Kategori</h2></div>
     <div class="cats">${['Semua', ...cats].map((c) => {
       const pic = c === 'Semua' ? '' : products.find((p) => p.category === c && p.thumb)?.thumb;
-      return `<button class="cat ${c === cat ? 'on' : ''}" data-cat="${esc(c)}"><span class="ring">${pic ? `<img src="${pic}" alt="">` : '<b>Semua</b>'}</span>${esc(c)}</button>`;
+      return `<button class="cat ${c === cat ? 'on' : ''}" data-cat="${esc(c)}"><span class="ring">${pic ? `<img src="${pic}" alt="">` : I.grid}</span>${esc(c)}</button>`;
     }).join('')}</div>` : ''}
     <label class="search">${I.search}<input type="search" id="q" placeholder="Cari baju…" value="${esc(q)}" aria-label="Cari produk"></label>
-    <div class="sec"><h2 id="gt"></h2><span class="muted" id="gc"></span></div>
+    <div class="sec"><h2 id="gt"></h2><span class="count" id="gc"></span></div>
     <div class="grid" id="grid"></div>`;
   const draw = () => {
     const list = products.filter((p) => (cat === 'Semua' || p.category === cat) && (!q || `${p.name} ${p.category} ${p.desc}`.toLowerCase().includes(q.toLowerCase())));
-    $('#gt').textContent = cat === 'Semua' ? 'Semua produk' : cat;
-    $('#gc').textContent = `${list.length} produk`;
+    $('#gt').textContent = cat === 'Semua' ? 'Semua item' : cat;
+    $('#gc').textContent = `${list.length}`;
     $('#grid').innerHTML = list.map(card).join('') || `<div class="empty" style="grid-column:1/-1">${products.length ? 'Tidak ada produk yang cocok.' : 'Belum ada produk. Cek lagi nanti ya.'}</div>`;
     bindHearts($('#grid'));
   };
@@ -169,7 +172,7 @@ function favorites() {
 // ---------- keranjang & pesan ----------
 function cartPage() {
   const ls = lines();
-  if (!ls.length) { view.innerHTML = '<h1 class="page-h">Keranjang</h1><div class="empty"><p>Keranjang masih kosong.</p><a class="cta" href="#/">Lihat produk</a></div>'; return; }
+  if (!ls.length) { view.innerHTML = `<h1 class="page-h">Keranjang</h1><div class="empty"><p>Keranjang masih kosong.</p><a class="cta" href="#/">Mulai belanja ${I.arrow}</a></div>`; return; }
   const b = load(KEY.buyer, { name: '', phone: '', address: '', pay: 'transfer', note: '' });
   document.body.classList.add('detail');
   view.innerHTML = `<h1 class="page-h">Keranjang</h1>
