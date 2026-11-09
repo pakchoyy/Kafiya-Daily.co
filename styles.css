@@ -354,3 +354,21 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .best { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--tint); }
 .best:last-child { border-bottom: 0; }
 .best .rk { width: 30px; height: 30px; display: grid; place-items: center; border: 2px solid #1E1512; border-radius: 10px; background: var(--lime); color: #1E1512; font-family: var(--serif); flex: none; }
+
+/* ---------- label pelanggan langsung (bingkai membulat, tanpa nama kurir) ---------- */
+.label.wahana { position: relative; padding: 3mm 4.5mm 2.4mm; }
+.label.wahana::before { content: ''; position: absolute; inset: 1.4mm; border: .35mm solid #000; border-radius: 3mm; pointer-events: none; }
+.label.wahana .lb-head { height: 9mm; border-bottom: .25mm dashed #000; padding-bottom: .8mm; }
+.label.wahana .lb-logo { max-height: 7.5mm; max-width: 11mm; }
+.label.wahana .lb-from { display: grid; min-width: 0; line-height: 1.1; }
+.label.wahana .lb-name { font-size: 9pt; }
+.label.wahana .lb-ph { font-size: 7pt; }
+.label.wahana .lb-exp { font-size: 8pt; padding: .2mm 1.6mm; border: .3mm solid #000; border-radius: 2mm; letter-spacing: .1mm; }
+.label .lb-k { flex: none; margin-top: 1.3mm; font-size: 6pt; font-weight: 700; letter-spacing: .5mm; text-transform: uppercase; }
+.label.wahana .lb-to { display: flex; align-items: baseline; gap: 1.8mm; margin-top: .2mm; font-size: 12pt; white-space: nowrap; overflow: hidden; }
+.label.wahana .lb-to b { overflow: hidden; text-overflow: ellipsis; }
+.label.wahana .lb-to span { flex: none; font-size: 9pt; }
+.label.wahana .lb-addr { margin-top: .5mm; }
+.label.wahana .lb-cod { border-radius: 1.6mm; }
+.label.wahana .lb-foot { border-top: 0; margin: .6mm 0 .3mm; padding-top: 0; }
+#print, #go { position: sticky; bottom: calc(84px + env(safe-area-inset-bottom)); z-index: 4; }

@@ -2,7 +2,7 @@
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';
-import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, fromLine, COD_SELF, codText } from './label.js';
+import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, codText, courierTag } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
 const PT = 0.3528;           // mm per pt
@@ -52,22 +52,26 @@ function drawLabel(ctx, o, shop, img) {
     drawFoot(ctx, 37, W, P);
     return;
   }
-  // kepala: logo + nama toko, ekspedisi di kanan, garis bawah
-  const lw = drawImgFit(ctx, img.mark, P, 2.5, 14, 8.5, false);
-  font(ctx, 11, true); ctx.textAlign = 'right'; const courier = o.courier === COD_SELF ? 'COD' : (o.courier || 'Wahana').toUpperCase();
-  ctx.fillText(courier, LABEL_W - P, 8.5); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
-  fitLine(ctx, shop.name || '', P + lw + 1.5, 8, W - lw - cw - 4, 8, 6, true);
-  ctx.beginPath(); ctx.moveTo(P, 12); ctx.lineTo(LABEL_W - P, 12); ctx.stroke();
-  // Dari / Untuk
-  font(ctx, 8, true); ctx.fillText('Dari :', P, 16); const dw = ctx.measureText('Dari : ').width;
-  font(ctx, 8, false); ctx.fillText(fromLine(shop), P + dw, 16, W - dw);
-  font(ctx, 8, true); ctx.fillText('Untuk :', P, 19.6);
+  // bingkai membulat
+  ctx.lineWidth = 0.35; ctx.beginPath(); ctx.roundRect(1.4, 1.4, LABEL_W - 2.8, LABEL_H - 2.8, 3); ctx.stroke(); ctx.lineWidth = 0.3;
+  // kepala: logo + nama & HP toko, tag kurir (bukan Wahana) di kanan, garis putus-putus
+  const lw = drawImgFit(ctx, img.mark, P, 3, 11, 7.5, false);
+  const tag = courierTag(o); let cw = 0;
+  if (tag) {
+    font(ctx, 8, true); cw = ctx.measureText(tag).width + 3.2;
+    ctx.beginPath(); ctx.roundRect(LABEL_W - P - cw, 4.6, cw, 4.4, 2); ctx.stroke();
+    ctx.textAlign = 'center'; ctx.fillText(tag, LABEL_W - P - cw / 2, 7.9); ctx.textAlign = 'left';
+  }
+  fitLine(ctx, shop.name || '', P + lw + 1.5, shop.phone ? 7 : 8.3, W - lw - cw - 3, 9, 6, true);
+  if (shop.phone) { font(ctx, 7, false); ctx.fillText(shop.phone, P + lw + 1.5, 10.2); }
+  ctx.save(); ctx.lineWidth = 0.25; ctx.setLineDash([0.8, 0.6]); ctx.beginPath(); ctx.moveTo(P, 12.4); ctx.lineTo(LABEL_W - P, 12.4); ctx.stroke(); ctx.restore();
   // penerima
-  font(ctx, 10, true); ctx.fillText(o.name, P, 23.8, W);
-  const nw = Math.min(W, ctx.measureText(o.name).width);
-  if (o.phone) { font(ctx, 10, false); ctx.fillText(` · ${o.phone}`, P + nw, 23.8, Math.max(0, W - nw)); }
-  // alamat: kecilkan sampai muat di atas garis kaki
-  const footY = LABEL_H - 7.5, top = 25, codH = o.cod ? 6 : 0, bottom = footY - 0.8 - codH;
+  font(ctx, 6, true); ctx.fillText('U N T U K', P, 16);
+  font(ctx, 12, true); const ph = o.phone ? (font(ctx, 9, false), ctx.measureText(o.phone).width + 1.8) : 0;
+  font(ctx, 12, true); ctx.fillText(o.name, P, 20.6, W - ph);
+  if (o.phone) { const nw = Math.min(W - ph, ctx.measureText(o.name).width); font(ctx, 9, false); ctx.fillText(o.phone, P + nw + 1.8, 20.6); }
+  // alamat: kecilkan sampai muat di atas kaki
+  const footY = LABEL_H - 6.6, top = 21.6, codH = o.cod ? 6 : 0, bottom = footY - 0.8 - codH;
   let pt = 8, lines;
   for (; ; pt -= 0.25) {
     font(ctx, pt, false); lines = wrap(ctx, o.address, W);
@@ -76,11 +80,11 @@ function drawLabel(ctx, o, shop, img) {
   const lh = pt * PT * 1.15;
   lines.forEach((l, i) => { if (top + (i + 1) * lh <= bottom + 0.5) ctx.fillText(l, P, top + (i + 1) * lh - lh * 0.2); });
   if (o.cod) {
-    ctx.fillRect(P, footY - codH - 0.4, W, codH - 0.6);
+    ctx.beginPath(); ctx.roundRect(P, footY - codH - 0.4, W, codH - 0.6, 1.6); ctx.fill();
     ctx.fillStyle = '#fff'; font(ctx, 11, true); ctx.textAlign = 'center';
     ctx.fillText(codText(o), LABEL_W / 2, footY - 2.2, W - 2); ctx.textAlign = 'left'; ctx.fillStyle = '#000';
   }
-  drawFoot(ctx, footY, W, P);
+  ctx.font = `italic ${7.5 * PT}px ${FONT}`; ctx.textAlign = 'center'; ctx.fillText(THANKS, LABEL_W / 2, footY + 3.4); ctx.textAlign = 'left';
 }
 
 // chunk: { orders:[...], ys:[...] }, sama dengan yang dipakai saat cetak.

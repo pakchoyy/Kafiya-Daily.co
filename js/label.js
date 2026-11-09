@@ -64,7 +64,8 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
 
 export const COD_SELF = 'COD Antar Sendiri';
 // COD antar sendiri / ketemuan: tanpa kurir, jadi kepala label cukup "COD" dan kotaknya berbunyi BAYAR.
-const courierName = (o) => (o.courier === COD_SELF ? 'COD' : (o.courier || 'Wahana').toUpperCase());
+// Label untuk pelanggan langsung: nama kurir hanya muncul kalau bukan Wahana / antar sendiri (mis. JNE, J&T).
+export const courierTag = (o) => (!o.courier || o.courier === 'Wahana' || o.courier === COD_SELF ? '' : o.courier.toUpperCase());
 export const codText = (o) => `${o.courier === COD_SELF ? 'BAYAR' : 'COD'} ${rupiah(o.cod)}`;
 
 export const THANKS = 'Thanks for your order \u263A\uFE0E';
@@ -83,10 +84,9 @@ export function labelHTML(order, shop, logos) {
     </div>`;
   }
   return `<div class="label wahana">
-    <div class="lb-head"><span class="lb-id"><img class="lb-logo" src="${logos.mark}" alt=""><span class="lb-name">${esc(shop.name)}</span></span><span class="lb-exp">${esc(courierName(order))}</span></div>
-    <div class="lb-row"><b>Dari :</b> ${esc(fromLine(shop))}</div>
-    <div class="lb-row"><b>Untuk :</b></div>
-    <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
+    <div class="lb-head"><span class="lb-id"><img class="lb-logo" src="${logos.mark}" alt=""><span class="lb-from"><span class="lb-name">${esc(shop.name)}</span>${shop.phone ? `<span class="lb-ph">${esc(shop.phone)}</span>` : ''}</span></span>${courierTag(order) ? `<span class="lb-exp">${esc(courierTag(order))}</span>` : ''}</div>
+    <div class="lb-k">Untuk</div>
+    <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? `<span>${esc(order.phone)}</span>` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
     ${order.cod ? `<div class="lb-cod">${esc(codText(order))}</div>` : ''}
     <div class="lb-foot">${THANKS}</div>
