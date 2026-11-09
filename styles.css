@@ -397,3 +397,7 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .kvar { display: flex; flex-wrap: wrap; gap: 4px; }
 .kvar span { padding: 2px 8px; border: 1.5px solid var(--edge); border-radius: 999px; font-size: 12px; font-weight: 700; }
 .kvar span.zero { background: var(--pink); color: #1E1512; border-color: #1E1512; }
+
+.gate { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-bottom: 60px; }
+.gate-logo { height: 56px; width: auto; align-self: flex-start; margin-bottom: 18px; }
+.gate input[type=password] { width: 100%; min-height: 50px; padding: 12px 14px; font-size: 16px; background: var(--card); border: 2px solid var(--edge); border-radius: 12px; }

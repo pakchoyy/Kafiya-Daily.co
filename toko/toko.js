@@ -255,5 +255,12 @@ function waText(o) {
   ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
 }
 
+// Logo diketuk 3x cepat → halaman admin (tetap minta login pemilik).
+let taps = 0, tapT;
+document.getElementById('logo').addEventListener('click', () => {
+  taps++; clearTimeout(tapT); tapT = setTimeout(() => { taps = 0; }, 1200);
+  if (taps >= 3) location.href = 'admin.html';
+});
+
 badge();
 start();

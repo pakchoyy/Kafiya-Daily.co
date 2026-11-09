@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 40; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 41; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -876,7 +876,7 @@ async function tokoSettings() {
     catch (e) { console.error(e); toast('Gagal menyimpan info toko.', 'err'); }
   };
   $('#tshare').onclick = async () => { try { await navigator.clipboard.writeText(TOKO_URL); toast('Link toko disalin.'); } catch { toast(TOKO_URL); } };
-  $('#tout').onclick = async () => { await cloud.logout(); toast('Sudah logout.'); tokoSettings(); };
+  $('#tout').onclick = async () => { await cloud.logout(); markOwner(false); location.hash = '#/'; location.reload(); };
 }
 
 // Daftar produk toko online, untuk pemilik.
@@ -1094,6 +1094,45 @@ async function render() {
   }
 }
 
+
+// ---------- Kunci admin ----------
+// Admin hanya terbuka untuk akun pemilik. Tanpa internet, HP yang pernah login tetap boleh masuk
+// (Firebase tidak bisa dicek), supaya cetak label tetap jalan saat sinyal hilang.
+const OWNER_KEY = 'kafiya-owner';
+const ownerSeen = () => { try { return localStorage.getItem(OWNER_KEY) === '1'; } catch { return false; } };
+const markOwner = (on) => { try { on ? localStorage.setItem(OWNER_KEY, '1') : localStorage.removeItem(OWNER_KEY); } catch { /* mode privat */ } };
+async function ownerOK() {
+  if (!cloud.configured()) return true;
+  try {
+    const u = await Promise.race([cloud.currentUser(), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]);
+    markOwner(!!u); return !!u;
+  } catch (e) { console.error(e); return ownerSeen(); }
+}
+function loginGate() {
+  app.innerHTML = `<main class="gate">
+    <img src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}" class="gate-logo">
+    <h1 class="display">Masuk admin</h1>
+    <p class="muted">Khusus pemilik toko. Pembeli silakan kembali ke <a href="./">halaman toko</a>.</p>
+    <form id="gf" novalidate>
+      <label class="f" for="tem">Email</label><input type="text" id="tem" inputmode="email" autocomplete="username">
+      <label class="f" for="tpw">Kata sandi</label><input type="password" id="tpw" autocomplete="current-password">
+      <button class="btn block" id="tlogin">Masuk</button>
+    </form></main>`;
+  $('#gf').onsubmit = async (e) => {
+    e.preventDefault();
+    const b = $('#tlogin'); b.disabled = true; b.textContent = 'Masuk…';
+    try { await cloud.login($('#tem').value.trim(), $('#tpw').value); markOwner(true); start(); }
+    catch (err) { console.error(err); toast(/network|fetch/i.test(err.message) ? 'Tidak ada internet. Coba lagi.' : 'Email atau kata sandi salah.', 'err'); b.disabled = false; b.textContent = 'Masuk'; }
+  };
+  $('#tem').focus();
+}
+let started = false;
+async function start() {
+  if (!await ownerOK()) return loginGate();
+  if (!started) { started = true; window.addEventListener('hashchange', render); }
+  render();
+}
+
 function applyTheme() {
   const t = shop.theme || 'auto';
   if (t === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.dataset.theme = t;
@@ -1105,8 +1144,8 @@ function applyTheme() {
   shop = await db.getShop();
   applyTheme();
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', applyTheme);
-  window.addEventListener('hashchange', render);
-  render();
+  app.innerHTML = '<main><p class="muted" style="text-align:center;padding:60px 0">Memeriksa akun…</p></main>';
+  start();
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // Versi baru terpasang -> muat ulang sekali supaya HP tidak memakai file lama.
     const had = !!navigator.serviceWorker.controller;
