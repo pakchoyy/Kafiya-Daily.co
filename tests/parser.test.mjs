@@ -78,3 +78,15 @@ test('Code128: semua pola 11 modul (stop 13) dan bisa didekode kembali', () => {
 test('no. pesanan Shopee dan no. HP tidak dianggap resi', () => {
   assert.deepEqual(extractResi('No.Pesanan: 261013G3KJRQC8\n6285600410357'), []);
 });
+
+import { parseCod } from '../js/parser.js';
+
+test('nominal COD dari chat', () => {
+  assert.equal(parseCod('COD 150rb ya kak'), 150000);
+  assert.equal(parseCod('cod Rp 150.000'), 150000);
+  assert.equal(parseCod('bayar di tempat 1,2jt'), 1200000);
+  assert.equal(parseCod('COD: 87.500'), 87500);
+  assert.equal(parseCod('transfer aja kak'), 0);
+  assert.equal(parseChat('an. Rina\nJl. Kenanga 7 Bekasi\nCOD 125rb').cod, 125000);
+  assert.equal(parseChat('an. Rina\nJl. Kenanga 7 Bekasi\nCOD 125rb').address, 'Jl. Kenanga 7 Bekasi');
+});

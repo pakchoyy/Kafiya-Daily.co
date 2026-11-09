@@ -21,9 +21,23 @@ function titleCase(s) {
   return s.toLowerCase().replace(/(^|[\s.'-])(\p{L})/gu, (_, a, b) => a + b.toUpperCase());
 }
 
+// Nominal COD dari chat: "COD 150rb", "cod Rp 150.000", "bayar ditempat 1,2jt". 0 kalau tidak ada.
+export function parseCod(raw) {
+  const m = /\b(?:cod|bayar\s*di\s*tempat)\b\D{0,12}?(\d+(?:[.,]\d+)*)\s*(rb|ribu|k|jt|juta)?\b/i.exec(String(raw || ''));
+  if (!m) return 0;
+  const unit = (m[2] || '').toLowerCase();
+  if (unit) {
+    const n = Number(m[1].replace(',', '.'));
+    return Math.round(n * (unit.startsWith('j') ? 1e6 : 1e3));
+  }
+  return Number(m[1].replace(/[.,]/g, '')) || 0;
+}
+export const rupiah = (n) => `Rp ${Number(n || 0).toLocaleString('id-ID')}`;
+
 export function parseChat(raw) {
   const lines = String(raw || '').replace(/\r/g, '').split('\n')
-    .map((l) => l.replace(WA_PREFIX, '').trim()).filter(Boolean);
+    .map((l) => l.replace(WA_PREFIX, '').trim()).filter(Boolean)
+    .filter((l) => !/^\s*(cod|bayar\s*di\s*tempat)\b/i.test(l)); // baris COD dibaca parseCod, bukan alamat
 
   let name = '', phone = '', cur = null;
   const addr = [], loose = [];
@@ -63,7 +77,7 @@ export function parseChat(raw) {
   const address = [...rest, ...addr].join(', ')
     .replace(/\s+/g, ' ').replace(/(,\s*)+/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
 
-  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address };
+  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address, cod: parseCod(raw) };
 }
 
 // Bersihkan teks hasil OCR screenshot WhatsApp: jam, centang, dan baris tombol aplikasi.
@@ -89,11 +103,11 @@ export function parseChatOcr(raw) {
     const p = l.match(PHONE_RE);
     if (p && !phone) phone = normalizePhone(p[0]);
     if ((m = l.match(LBL.addr))) { addr.push(l.slice(m[0].length).trim()); continue; }
-    if (ADDR_LINE.test(l) && !CHATTER.test(l)) addr.push(p ? l.replace(p[0], '').trim() : l);
+    if (ADDR_LINE.test(l) && !CHATTER.test(l) && !/\bcod\b/i.test(l)) addr.push(p ? l.replace(p[0], '').trim() : l);
   }
   if (!name && !addr.length) return parseChat(cleanOcr(raw));
   const address = addr.join(', ').replace(/\s+,/g, ',').replace(/\s+/g, ' ').replace(/(,\s*)+/g, ', ').replace(/^,\s*|,\s*$/g, '').trim();
-  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address };
+  return { name: titleCase(name.replace(/\s+/g, ' ').trim()), phone, address, cod: parseCod(raw) };
 }
 
 // Ambil kandidat no. resi dari teks OCR: kode huruf/angka 10–25 karakter yang mengandung angka.

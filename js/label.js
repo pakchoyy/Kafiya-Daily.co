@@ -2,6 +2,7 @@
 // label ditumpuk dari atas.
 import { logoSet } from './logo.js';
 import { barcodeSVG } from './barcode.js';
+import { rupiah } from './parser.js';
 
 export const LABEL_W = 70, LABEL_H = 50;
 const MIN_MARGIN = 10; // mm atas/bawah yang biasanya tidak bisa dicetak printer
@@ -84,6 +85,7 @@ export function labelHTML(order, shop, logos) {
     <div class="lb-row"><b>Untuk :</b></div>
     <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
+    ${order.cod ? `<div class="lb-cod">COD ${esc(rupiah(order.cod))}</div>` : ''}
     <div class="lb-foot">${THANKS}</div>
   </div>`;
 }
