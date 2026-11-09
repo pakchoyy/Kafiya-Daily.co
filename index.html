@@ -1,22 +1,36 @@
 <!doctype html>
-<html lang="id">
+<html lang="id" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FAF9F7">
-<title>Kafiya Daily: Cetak Resi</title>
-<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#F4EEE8">
+<meta name="color-scheme" content="light">
+<title>Kafiya Daily: Teman Outfit Harianmu</title>
+<meta name="description" content="Katalog Kafiya Daily. Pilih baju, masukkan ke keranjang, lalu pesan lewat WhatsApp.">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600&display=swap">
-<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="toko/toko.css">
+<script>
+  // Aplikasi yang dipasang di layar HP pemilik dulu membuka alamat ini; sekarang admin ada di admin.html.
+  if (matchMedia('(display-mode: standalone)').matches || navigator.standalone) location.replace('admin.html' + location.hash);
+</script>
 </head>
 <body>
-<div id="app"></div>
-<div id="print-root" aria-hidden="true"></div>
+<header class="bar">
+  <a class="ibtn" href="#/" aria-label="Beranda"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg></a>
+  <a class="logo" href="admin.html" aria-label="Kafiya Daily (masuk admin)"><img src="assets/logo-full.png" alt="Kafiya Daily"></a>
+  <a class="ibtn" href="#/keranjang" aria-label="Keranjang"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg><span class="badge" id="badge" hidden></span></a>
+</header>
+<main id="view" aria-live="polite"><p class="loading">Memuat katalog…</p></main>
+<nav class="tabs" aria-label="Menu toko">
+  <a href="#/" data-tab="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Beranda</span></a>
+  <a href="#/favorit" data-tab="fav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg><span>Favorit</span></a>
+  <a href="#/keranjang" data-tab="cart"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/></svg><span>Keranjang</span></a>
+</nav>
 <div id="toast" role="status"></div>
-<script type="module" src="js/app.js"></script>
+<script type="module" src="toko/toko.js"></script>
 </body>
 </html>
