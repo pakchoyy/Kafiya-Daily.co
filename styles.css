@@ -437,3 +437,8 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .pv-row { grid-template-columns: 44px 1fr auto 40px; }
 .pv-row .qty button { width: 34px; }
 .pv-row .qty input[type=number] { width: 38px; }
+
+.pobox-a { margin-top: 16px; padding: 12px 14px; border: 2px solid var(--edge); border-radius: 14px; background: var(--card); }
+.pobox-a .row { align-items: flex-start; }
+.pobox-a input[type=checkbox] { margin-top: 2px; flex: none; }
+.kst.po { background: var(--lilac); }
