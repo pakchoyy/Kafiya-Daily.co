@@ -1,5 +1,5 @@
 import * as db from './db.js';
-import { parseChat, normalizePhone } from './parser.js';
+import { parseChat, normalizePhone, rupiah } from './parser.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, layout } from './label.js';
@@ -7,8 +7,10 @@ import { readAny } from './shopee.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
 const BACKUP_DAYS = 7;
+// Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
+const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 27; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 28; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -55,14 +57,15 @@ function editOrder(o, onDone) {
     ${w ? `<label class="f">Nama penerima</label><input type="text" id="en" value="${esc(o.name)}">
     <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
-    <label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}">` : ''}
+    <label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}">
+    <label class="f">COD (kosongkan kalau bukan COD)</label><input type="text" id="ecod" inputmode="numeric" value="${o.cod ? esc(o.cod.toLocaleString('id-ID')) : ''}" placeholder="Contoh: 150.000">` : ''}
     <label class="f">No. resi${w ? ' (catatan)' : ''}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
     $('#es', m).onclick = async () => {
       const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
-      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana' });
+      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', cod: toCod($('#ecod', m).value) });
       if (w ? !v.name || !v.address : !v.resi) return toast(w ? 'Nama dan alamat wajib diisi.' : 'No. resi wajib diisi.');
       await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
     };
@@ -181,12 +184,15 @@ function recapHTML(orders) {
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(Date.now() - (6 - i) * 864e5); return { k: dayKey(d), d, w: 0, s: 0 }; });
   const byKey = new Map(days.map((x) => [x.k, x]));
   for (const o of orders) { const x = byKey.get(dayKey(new Date(o.createdAt))); if (x) x[o.type.startsWith('shopee') ? 's' : 'w']++; }
+  const week = orders.filter((o) => o.cod && byKey.has(dayKey(new Date(o.createdAt))));
+  const codSum = week.reduce((a, o) => a + o.cod, 0), codN = week.length;
   const max = Math.max(1, ...days.map((x) => x.w + x.s)), tw = days.reduce((a, x) => a + x.w, 0), ts = days.reduce((a, x) => a + x.s, 0);
   return `<div class="recap"><div class="row spread"><b>7 hari terakhir</b><span class="muted">${tw + ts} paket</span></div>
     <div class="bars">${days.map((x) => `<div title="${x.w + x.s} paket"><span>${x.w + x.s || ''}</span>
       <div class="stack" style="height:${Math.round(((x.w + x.s) / max) * 56) + 2}px">${x.w ? `<i class="w" style="flex:${x.w}"></i>` : ''}${x.s ? `<i class="s" style="flex:${x.s}"></i>` : ''}</div>
       <span>${x.d.toLocaleDateString('id-ID', { weekday: 'short' }).slice(0, 3)}</span></div>`).join('')}</div>
-    <div class="lg"><span class="lw">Wahana/ekspedisi ${tw}</span><span class="ls">Shopee ${ts}</span></div></div>`;
+    <div class="lg"><span class="lw">Wahana/ekspedisi ${tw}</span><span class="ls">Shopee ${ts}</span></div>
+    ${codSum ? `<div class="muted" style="margin-top:8px">COD 7 hari: <b>${rupiah(codSum)}</b> dari ${codN} paket</div>` : ''}</div>`;
 }
 
 // ---------- Pesanan ----------
@@ -217,7 +223,7 @@ async function viewPesanan() {
       <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
       <div class="chips">${[['all', 'Semua'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari'], ['day', listFilter.day ? fmtDay(listFilter.day) : 'Pilih tanggal']].map(([v, l]) => `<button class="pill ${listFilter.date === v ? 'on' : ''}" data-fd="${v}">${v === 'day' ? ic('calendar', 14) : ''}${esc(l)}</button>`).join('')}
         <input type="date" id="fday" value="${esc(listFilter.day)}" tabindex="-1" aria-hidden="true"></div>
-      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
+      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak'], ['cod', 'COD']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
     </div>
     <div class="row spread" style="margin:10px 2px"><span class="muted" id="fcount"></span><button class="btn ghost sm" id="selt">${sel.on ? 'Selesai' : 'Pilih'}</button></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
@@ -229,7 +235,7 @@ async function viewPesanan() {
         <div class="t">${resiText(o)}</div>
         <div class="muted ell">${o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
       </a>
-      <span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
+      ${o.cod ? `<span class="chip cod">COD</span>` : ''}<span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
       ${orderBtns(o)}
     </div>`;
   // Saring tanpa render ulang seluruh halaman supaya kolom cari tetap fokus.
@@ -291,6 +297,7 @@ function filterOrders(orders, f) {
     if (f.date === 'day' && f.day && k !== f.day) return false;
     if (f.status === 'todo' && o.printed) return false;
     if (f.status === 'done' && !o.printed) return false;
+    if (f.status === 'cod' && !o.cod) return false;
     return !q || [o.resi, o.name, o.phone, o.address, o.courier].some((v) => String(v || '').toLowerCase().includes(q));
   });
 }
@@ -312,7 +319,8 @@ async function viewBaru() {
         <label class="f">Nama penerima</label><input type="text" data-i="${i}" data-k="name" value="${esc(it.name)}">
         <label class="f">No. HP</label><input type="tel" data-i="${i}" data-k="phone" value="${esc(it.phone)}" placeholder="Tidak ada di chat, isi kalau perlu">
         <label class="f">Alamat</label><textarea data-i="${i}" data-k="address" style="min-height:80px">${esc(it.address)}</textarea>
-        <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}${dupe(it, i)}</div>`;
+        <label class="f">Ekspedisi</label>${courierSel(i, it.courier)}
+        <label class="f">COD (kosongkan kalau bukan COD)</label><input type="text" data-i="${i}" data-k="cod" inputmode="numeric" value="${it.cod ? esc(Number(it.cod).toLocaleString('id-ID')) : ''}" placeholder="Contoh: 150.000">${dupe(it, i)}</div>`;
 
   frame('Pesanan baru', `
     <div class="row"><button class="btn big grow" id="up">${ic('camera', 20)} Upload screenshot</button><button class="btn ghost big" id="pdf">${ic('file', 18)} PDF</button></div>
@@ -334,6 +342,7 @@ async function viewBaru() {
       <label class="f" for="courier">Ekspedisi</label>
       <select id="courier">${COURIERS.map((c) => `<option ${d.courier === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
       <input type="text" id="other" placeholder="Nama ekspedisi" value="${esc(d.other)}" style="margin-top:8px;${d.courier === 'Lainnya' ? '' : 'display:none'}">
+      <label class="f" for="mcod">COD (kosongkan kalau bukan COD)</label><input type="text" id="mcod" inputmode="numeric" placeholder="Contoh: 150.000">
       <button class="btn ghost block" id="addm">${ic('plus', 18)} Tambahkan ke daftar</button>
     </details>
     ${items.length ? `<div class="row" style="margin-top:12px"><input type="checkbox" id="save" ${d.save ? 'checked' : ''}><label for="save">Simpan pelanggan (chat) untuk dipakai lagi</label></div>
@@ -341,7 +350,7 @@ async function viewBaru() {
 
   // daftar hasil
   $$('[data-i][data-k]').forEach((el) => {
-    el.oninput = el.onchange = () => { items[el.dataset.i][el.dataset.k] = el.dataset.k === 'resi' ? el.value.replace(/\s+/g, '').toUpperCase() : el.value; };
+    el.oninput = el.onchange = () => { const k = el.dataset.k; items[el.dataset.i][k] = k === 'resi' ? el.value.replace(/\s+/g, '').toUpperCase() : k === 'cod' ? toCod(el.value) : el.value; };
   });
   $$('[data-rm]').forEach((b) => b.onclick = () => { items.splice(Number(b.dataset.rm), 1); viewBaru(); });
   $('#save')?.addEventListener('change', (e) => { d.save = e.target.checked; });
@@ -416,12 +425,13 @@ function bindManual(d, customers) {
     if (!r.name && !r.phone && !r.address) return toast('Tidak ada yang bisa dirapikan.');
     Object.assign(d, r);
     ['name', 'phone', 'address'].forEach((k) => { $('#' + k).value = d[k]; });
-    toast('Sudah dirapikan. Periksa dulu ya.');
+    if (r.cod) $('#mcod').value = r.cod.toLocaleString('id-ID');
+    toast(r.cod ? `Sudah dirapikan. COD ${rupiah(r.cod)} terbaca, periksa dulu ya.` : 'Sudah dirapikan. Periksa dulu ya.');
   };
   $('#addm').onclick = () => {
     if (!d.name.trim() || !d.address.trim()) return toast('Nama dan alamat wajib diisi.');
     const courier = d.courier === 'Lainnya' ? d.other.trim() || 'Lainnya' : d.courier;
-    d.items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier });
+    d.items.push({ kind: 'wahana', name: d.name.trim(), phone: d.phone.trim(), address: d.address.trim(), courier, cod: toCod($('#mcod').value) || d.cod || 0 });
     Object.assign(d, { chat: '', name: '', phone: '', address: '', manualOpen: false });
     toast('Ditambahkan ke daftar.'); viewBaru();
   };
@@ -486,7 +496,7 @@ async function saveItems() {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', resi: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });

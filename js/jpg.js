@@ -2,6 +2,7 @@
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';
+import { rupiah } from './parser.js';
 import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, fromLine } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
@@ -67,7 +68,7 @@ function drawLabel(ctx, o, shop, img) {
   const nw = Math.min(W, ctx.measureText(o.name).width);
   if (o.phone) { font(ctx, 10, false); ctx.fillText(` · ${o.phone}`, P + nw, 23.8, Math.max(0, W - nw)); }
   // alamat: kecilkan sampai muat di atas garis kaki
-  const footY = LABEL_H - 7.5, top = 25, bottom = footY - 0.8;
+  const footY = LABEL_H - 7.5, top = 25, codH = o.cod ? 6 : 0, bottom = footY - 0.8 - codH;
   let pt = 8, lines;
   for (; ; pt -= 0.25) {
     font(ctx, pt, false); lines = wrap(ctx, o.address, W);
@@ -75,6 +76,11 @@ function drawLabel(ctx, o, shop, img) {
   }
   const lh = pt * PT * 1.15;
   lines.forEach((l, i) => { if (top + (i + 1) * lh <= bottom + 0.5) ctx.fillText(l, P, top + (i + 1) * lh - lh * 0.2); });
+  if (o.cod) {
+    ctx.fillRect(P, footY - codH - 0.4, W, codH - 0.6);
+    ctx.fillStyle = '#fff'; font(ctx, 11, true); ctx.textAlign = 'center';
+    ctx.fillText(`COD ${rupiah(o.cod)}`, LABEL_W / 2, footY - 2.2, W - 2); ctx.textAlign = 'left'; ctx.fillStyle = '#000';
+  }
   drawFoot(ctx, footY, W, P);
 }
 

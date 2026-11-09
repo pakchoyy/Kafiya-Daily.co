@@ -114,6 +114,7 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .avatar { width: 40px; height: 40px; display: grid; place-items: center; font-family: var(--serif); font-size: 20px; flex: none; background: var(--card); border: 1px solid var(--line); }
 .avatar.shopee { color: #B5502E; }
 .chip { display: inline-block; padding: 3px 8px; font-size: 12px; border: 1px solid currentColor; color: var(--muted); white-space: nowrap; }
+.chip.cod { color: var(--text); border-color: var(--text); font-weight: 600; margin-right: 4px; }
 .chip.ok { color: var(--ok); }
 .chip.todo { color: var(--warn); }
 .banner { padding: 12px 14px; border-left: 3px solid var(--warn); background: var(--card); margin-bottom: 12px; font-size: 15px; }
@@ -200,6 +201,7 @@ nav.bottom a.fab.on .fab-in { background: var(--ink); }
 .label .lb-row { font-size: 8pt; flex: none; margin-top: 1mm; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .label .lb-to { font-size: 10pt; flex: none; margin-top: .6mm; }
 .label .lb-addr { flex: 1; min-height: 0; overflow: hidden; font-size: 8pt; margin-top: .6mm; }
+.label .lb-cod { flex: none; margin-top: 1mm; padding: .8mm 2mm; background: #000; color: #fff; font-weight: 700; font-size: 11pt; text-align: center; letter-spacing: .2mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .label .lb-foot { flex: none; border-top: .3mm solid #000; margin: 1mm 0 1.5mm; padding-top: 1mm; text-align: center; font-size: 7.5pt; font-style: italic; }
 .label.shopee { justify-content: flex-start; align-items: center; text-align: center; padding-top: 3mm; }
 .label.shopee .lb-logo-wrap { height: 11mm; display: grid; place-items: center; }
