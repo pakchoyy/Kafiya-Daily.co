@@ -426,3 +426,14 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .vbtns { display: grid; gap: 8px; }
 .vbtns .btn { width: 100%; }
 @media (prefers-reduced-motion: reduce) { .vmic.listen { animation: none; } }
+
+/* ---------- jumlah dengan − / + ---------- */
+.qty { display: inline-flex; align-items: stretch; border: 2px solid var(--edge); border-radius: 12px; background: var(--card); overflow: hidden; }
+.qty button { width: 46px; min-height: 46px; border: 0; background: var(--tint); color: var(--text); font-size: 22px; font-weight: 700; cursor: pointer; }
+.qty button:active { background: var(--lime); color: #1E1512; }
+.qty input[type=number] { width: 64px; min-height: 46px !important; border: 0 !important; border-radius: 0 !important; text-align: center; font-weight: 700; padding: 0 !important; -moz-appearance: textfield; }
+.qty input::-webkit-inner-spin-button, .qty input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.qty input:disabled { background: var(--tint); }
+.pv-row { grid-template-columns: 44px 1fr auto 40px; }
+.pv-row .qty button { width: 34px; }
+.pv-row .qty input[type=number] { width: 38px; }

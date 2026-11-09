@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 43; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 44; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -940,7 +940,8 @@ async function editProduk(p, list) {
     <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Pilih atau ketik kategori baru"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     <div class="chips catq">${cats.map((c) => `<button type="button" class="pill ${c === p?.category ? 'on' : ''}" data-cq="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <div class="row"><div class="grow"><label class="f" for="pp">Harga (Rp)</label><div class="withmic"><input type="text" id="pp" inputmode="numeric" value="${p?.price ? p.price.toLocaleString('id-ID') : ''}">${micBtn('pp', 'harga')}</div></div>
-    <div style="width:110px"><label class="f" for="ps">Stok</label><input type="number" id="ps" min="0" value="${p?.stock ?? 1}"></div></div>
+    </div>
+    <label class="f" for="ps">Stok</label><span class="qty"><button type="button" data-inc="-1" aria-label="Kurangi stok">−</button><input type="number" id="ps" min="0" inputmode="numeric" value="${p?.stock ?? 1}"><button type="button" data-inc="1" aria-label="Tambah stok">+</button></span>
     <label class="f">Varian (warna / motif), masing-masing punya stok</label>
     <div id="pvl" class="pvl"></div>
     <button class="btn ghost block" id="pva" type="button">${ic('plus', 18)} Tambah varian</button>
@@ -951,7 +952,7 @@ async function editProduk(p, list) {
     ${p ? `<button class="btn danger block" id="pdel">${ic('trash', 18)} Hapus produk</button>` : ''}`, (m, close) => {
     let vars = (p?.variants || []).map((v) => ({ ...v }));
     const drawVars = () => {
-      $('#pvl', m).innerHTML = vars.map((v, i) => `<div class="pv-row"><button type="button" class="pv-ph" data-vp="${i}" aria-label="Foto varian ${i + 1}">${v.thumb ? `<img src="${v.thumb}" alt="">` : ic('camera', 18)}</button><input type="text" data-vn="${i}" value="${esc(v.name)}" placeholder="Misal: Hijau" aria-label="Nama varian ${i + 1}"><input type="number" min="0" data-vs="${i}" value="${v.stock}" aria-label="Stok varian ${i + 1}"><button class="icon-btn" type="button" data-vx="${i}" aria-label="Hapus varian ${i + 1}">${ic('trash', 16)}</button></div>`).join('');
+      $('#pvl', m).innerHTML = vars.map((v, i) => `<div class="pv-row"><button type="button" class="pv-ph" data-vp="${i}" aria-label="Foto varian ${i + 1}">${v.thumb ? `<img src="${v.thumb}" alt="">` : ic('camera', 18)}</button><input type="text" data-vn="${i}" value="${esc(v.name)}" placeholder="Misal: Hijau" aria-label="Nama varian ${i + 1}"><span class="qty"><button type="button" data-inc="-1" aria-label="Kurangi stok varian ${i + 1}">−</button><input type="number" min="0" inputmode="numeric" data-vs="${i}" value="${v.stock}" aria-label="Stok varian ${i + 1}"><button type="button" data-inc="1" aria-label="Tambah stok varian ${i + 1}">+</button></span><button class="icon-btn" type="button" data-vx="${i}" aria-label="Hapus varian ${i + 1}">${ic('trash', 16)}</button></div>`).join('');
       $$('[data-vn]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vn].name = x.value; });
       $$('[data-vs]', m).forEach((x) => x.oninput = () => { vars[x.dataset.vs].stock = Math.max(0, Number(x.value) || 0); syncStock(); });
       $$('[data-vx]', m).forEach((x) => x.onclick = () => { vars.splice(Number(x.dataset.vx), 1); drawVars(); });
@@ -971,6 +972,13 @@ async function editProduk(p, list) {
     drawVars();
     $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
+    // Tombol − / + di samping kolom jumlah stok.
+    m.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-inc]'); if (!b) return;
+      const inp = b.parentElement.querySelector('input'); if (inp.disabled) return;
+      inp.value = Math.max(0, (Number(inp.value) || 0) + Number(b.dataset.inc));
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     $$('[data-cq]', m).forEach((b) => b.onclick = () => { $('#pc', m).value = b.dataset.cq; $$('[data-cq]', m).forEach((x) => x.classList.toggle('on', x === b)); });
     const num = (t) => spokenNumber(t) || null;
     const STEP = {
