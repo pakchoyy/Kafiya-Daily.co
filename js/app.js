@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 44; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 45; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -691,7 +691,7 @@ async function tokoOrders() {
     if (!box || !fresh.length) return;
     box.innerHTML = `<button class="btn alt block" id="ambil">${ic('download', 18)} Ambil ${fresh.length} pesanan dari toko online</button>`;
     $('#ambil').onclick = () => {
-      for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address + (o.note ? ` (${o.note})` : ''), courier: o.pay === 'cod' ? COD_SELF : 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
+      for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address + (o.note?.replace(/( · )?Setuju syarat PO.*$/, '') ? ` (${o.note.replace(/( · )?Setuju syarat PO.*$/, '')})` : ''), courier: o.pay === 'cod' ? COD_SELF : 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
       toast(`${fresh.length} pesanan dari toko masuk daftar. Cek ekspedisi dan ongkirnya ya.`);
       viewBaru();
     };
@@ -891,7 +891,7 @@ async function viewProduk() {
   let f = 'all';
   const card = (p) => `<div class="kc ${p.active ? '' : 'off'}">
       <button class="kph" data-edit="${p.id}" aria-label="Ubah ${esc(p.name)}">${p.thumb ? `<img src="${p.thumb}" alt="">` : ic('camera', 28)}
-        <span class="kst ${!p.active ? 'hid' : p.stock > 0 ? (p.stock <= 2 ? 'low' : '') : 'zero'}">${!p.active ? 'Disembunyikan' : p.stock > 0 ? (p.stock <= 2 ? 'Stok menipis' : 'Tampil') : 'Habis'}</span></button>
+        <span class="kst ${!p.active ? 'hid' : p.po ? 'po' : p.stock > 0 ? (p.stock <= 2 ? 'low' : '') : 'zero'}">${!p.active ? 'Disembunyikan' : p.po ? `PO ${esc(p.poDays || '3-5 hari')}` : p.stock > 0 ? (p.stock <= 2 ? 'Stok menipis' : 'Tampil') : 'Habis'}</span></button>
       <div class="kin"><b class="ell">${esc(p.name)}</b><span class="kpr">${rupiah(p.price)}</span>
         ${p.variants?.length ? `<div class="kvar">${p.variants.map((v) => `<span class="${v.stock ? '' : 'zero'}">${esc(v.name)} ${v.stock}</span>`).join('')}</div>` : `<div class="kst2"><button data-st="${p.id}" data-v="-1" aria-label="Kurangi stok ${esc(p.name)}">−</button><b>${p.stock || 0}</b><button data-st="${p.id}" data-v="1" aria-label="Tambah stok ${esc(p.name)}">+</button></div>`}
         <label class="ktg"><input type="checkbox" data-act="${p.id}" ${p.active ? 'checked' : ''}> Tampil di toko</label>
@@ -947,6 +947,8 @@ async function editProduk(p, list) {
     <button class="btn ghost block" id="pva" type="button">${ic('plus', 18)} Tambah varian</button>
     <label class="f" for="pz">Ukuran (pisahkan dengan koma, kosongkan kalau all size)</label><input type="text" id="pz" value="${esc((p?.sizes || []).join(', '))}" placeholder="S, M, L, XL">
     <label class="f" for="pd">Deskripsi</label><div class="withmic"><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>${micBtn('pd', 'deskripsi')}</div>
+    <div class="pobox-a"><div class="row"><input type="checkbox" id="ppo" ${p?.po ? 'checked' : ''}><label for="ppo"><b>Pre-order (PO)</b>: tetap bisa dipesan walau stok 0, pembeli wajib setuju tidak bisa batal</label></div>
+      <div id="ppow" ${p?.po ? '' : 'hidden'}><label class="f" for="ppd">Estimasi siap</label><input type="text" id="ppd" value="${esc(p?.poDays || '3-5 hari')}"></div></div>
     <div class="row" style="margin-top:12px"><input type="checkbox" id="pa" ${p?.active === false ? '' : 'checked'}><label for="pa">Tampilkan di toko</label></div>
     <button class="btn block" id="psave">Simpan produk</button>
     ${p ? `<button class="btn danger block" id="pdel">${ic('trash', 18)} Hapus produk</button>` : ''}`, (m, close) => {
@@ -972,6 +974,7 @@ async function editProduk(p, list) {
     drawVars();
     $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
+    $('#ppo', m).onchange = (e) => { $('#ppow', m).hidden = !e.target.checked; };
     // Tombol − / + di samping kolom jumlah stok.
     m.addEventListener('click', (e) => {
       const b = e.target.closest('[data-inc]'); if (!b) return;
@@ -1019,7 +1022,7 @@ async function editProduk(p, list) {
     $('#psave', m).onclick = async () => {
       const v = { ...(p || {}), name: $('#pn', m).value.trim(), category: $('#pc', m).value.trim(), price: toCod($('#pp', m).value),
         stock: Number($('#ps', m).value) || 0, sizes: $('#pz', m).value.split(',').map((x) => x.trim()).filter(Boolean),
-        desc: $('#pd', m).value.trim(), active: $('#pa', m).checked };
+        desc: $('#pd', m).value.trim(), active: $('#pa', m).checked, po: $('#ppo', m).checked, poDays: $('#ppd', m).value.trim() || '3-5 hari' };
       v.variants = vars.map((x) => ({ name: x.name.trim(), stock: x.stock, ...(x.thumb ? { thumb: x.thumb } : {}) })).filter((x) => x.name);
       if (!p && !cur().length && v.variants[0]?.thumb) photos = [v.variants[0].thumb];
       if (v.variants.length) v.stock = v.variants.reduce((a, x) => a + x.stock, 0);

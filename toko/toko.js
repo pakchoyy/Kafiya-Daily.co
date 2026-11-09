@@ -68,8 +68,12 @@ function route() {
 }
 
 // ---------- komponen ----------
-const card = (p) => `<div class="pc ${p.stock > 0 ? '' : 'out'}"><a href="#/p/${encodeURIComponent(p.id)}">
-    <span class="ph">${p.thumb ? `<img src="${p.thumb}" alt="" loading="lazy">` : ''}${p.stock > 0 ? '' : '<span class="so">Stok habis</span>'}</span>
+// Produk PO (pre-order) tetap bisa dipesan walau stok 0; batas jumlah per pesanan 20.
+const PO_MAX = 20;
+const avail = (p) => p.po || p.stock > 0;
+const poText = (p) => `PO ${p.poDays || '3-5 hari'}`;
+const card = (p) => `<div class="pc ${avail(p) ? '' : 'out'}"><a href="#/p/${encodeURIComponent(p.id)}">
+    <span class="ph">${p.thumb ? `<img src="${p.thumb}" alt="" loading="lazy">` : ''}${p.po ? `<span class="po">${esc(poText(p))}</span>` : p.stock > 0 ? '' : '<span class="so">Stok habis</span>'}</span>
     <span class="nm">${esc(p.name)}</span><span class="pr">${rupiah(p.price)}</span></a>
     <button class="heart ${fav.has(p.id) ? 'on' : ''}" data-fav="${esc(p.id)}" aria-label="${fav.has(p.id) ? 'Hapus dari' : 'Simpan ke'} favorit ${esc(p.name)}" aria-pressed="${fav.has(p.id)}">${I.heart}</button></div>`;
 
@@ -88,7 +92,7 @@ function bindHearts(root, after) {
 // ---------- beranda ----------
 function home() {
   const cats = [...new Set(products.map((p) => p.category).filter(Boolean))];
-  const newest = products.find((p) => p.thumb && p.stock > 0) || products[0];
+  const newest = products.find((p) => p.thumb && avail(p)) || products[0];
   view.innerHTML = `${newest ? `<section class="hero">
       <div class="tx"><span class="eb">Baru drop</span><h1>${esc(newest.name)}</h1>
         <p>${esc(shop?.about || 'Teman outfit harianmu.')}</p>
@@ -122,8 +126,8 @@ async function detail(id) {
   window.scrollTo(0, 0);
   const vars = (p.variants || []).filter((v) => v.name);
   let size = p.sizes?.length === 1 ? p.sizes[0] : '', qty = 1;
-  let variant = vars.length === 1 && vars[0].stock > 0 ? vars[0].name : '';
-  const left = () => (vars.length ? (vars.find((v) => v.name === variant)?.stock ?? 0) : p.stock || 0);
+  let variant = vars.length === 1 && (p.po || vars[0].stock > 0) ? vars[0].name : '';
+  const left = () => (p.po ? PO_MAX : vars.length ? (vars.find((v) => v.name === variant)?.stock ?? 0) : p.stock || 0);
   const base = () => photoCache.get(p.id) || (p.thumb ? [p.thumb] : []);
   // Foto varian terpilih tampil paling depan.
   const pics = () => { const vt = vars.find((v) => v.name === variant)?.thumb; return vt ? [vt, ...base()] : base(); };
@@ -133,11 +137,12 @@ async function detail(id) {
     <div class="thumbs" id="th"></div>
     <div class="dinfo">${p.category ? `<div class="cat-l">${esc(p.category)}</div>` : ''}<h1>${esc(p.name)}</h1><div class="pr">${rupiah(p.price)}</div>
       ${p.desc ? `<p class="desc">${esc(p.desc)}</p>` : ''}
-      ${vars.length ? `<span class="lbl">Pilih varian</span><div class="sizes">${vars.map((v) => `<button class="sz ${v.name === variant ? 'on' : ''}" data-var="${esc(v.name)}" aria-pressed="${v.name === variant}" ${v.stock > 0 ? '' : 'disabled'}>${v.thumb ? `<img src="${v.thumb}" alt="">` : ''}${esc(v.name)}${v.stock > 0 ? '' : ' · habis'}</button>`).join('')}</div>` : ''}
+      ${vars.length ? `<span class="lbl">Pilih varian</span><div class="sizes">${vars.map((v) => `<button class="sz ${v.name === variant ? 'on' : ''}" data-var="${esc(v.name)}" aria-pressed="${v.name === variant}" ${p.po || v.stock > 0 ? '' : 'disabled'}>${v.thumb ? `<img src="${v.thumb}" alt="">` : ''}${esc(v.name)}${p.po || v.stock > 0 ? '' : ' · habis'}</button>`).join('')}</div>` : ''}
       ${p.sizes?.length ? `<span class="lbl">Ukuran</span><div class="sizes">${p.sizes.map((s) => `<button class="sz ${s === size ? 'on' : ''}" data-size="${esc(s)}" aria-pressed="${s === size}">${esc(s)}</button>`).join('')}</div>` : ''}
-      ${p.stock > 0 ? `<span class="lbl">Jumlah</span><div class="stepper"><button data-q="-1" aria-label="Kurangi">−</button><b id="qn">1</b><button data-q="1" aria-label="Tambah">+</button></div> <span class="muted" id="left">${vars.length && !variant ? 'pilih varian dulu' : `stok ${left()}`}</span>`
+      ${p.po ? `<div class="pobox"><b>${esc(poText(p))}</b><span>Barang dipesankan dulu, siap dalam ${esc(p.poDays || '3-5 hari')}. Pesanan PO tidak bisa dibatalkan.</span></div>` : ''}
+      ${avail(p) ? `<span class="lbl">Jumlah</span><div class="stepper"><button data-q="-1" aria-label="Kurangi">−</button><b id="qn">1</b><button data-q="1" aria-label="Tambah">+</button></div> <span class="muted" id="left">${p.po ? '' : vars.length && !variant ? 'pilih varian dulu' : `stok ${left()}`}</span>`
         : '<p class="note">Stok sedang habis. Tanyakan ketersediaan lewat WhatsApp.</p>'}</div>
-    <div class="buybar">${p.stock > 0 ? `<button class="second" id="add" aria-label="Masukkan keranjang">${I.bag}<span>Keranjang</span></button><button class="primary" id="buy">Beli sekarang</button>`
+    <div class="buybar">${avail(p) ? `<button class="second" id="add" aria-label="Masukkan keranjang">${I.bag}<span>Keranjang</span></button><button class="primary" id="buy">Beli sekarang</button>`
       : `<span class="tot"><small>Harga</small><b>${rupiah(p.price)}</b></span><a class="primary" href="https://wa.me/${waNumber(shop?.wa)}?text=${encodeURIComponent(`Halo, ${p.name} ada stok lagi?`)}">${I.wa} Tanya stok</a>`}</div>`;
   const drawPics = () => {
     const list = pics();
@@ -155,7 +160,7 @@ async function detail(id) {
   bindHearts(view);
   const pick = (attr, set) => $$(`[data-${attr}]`).forEach((b) => b.onclick = () => { set(b.dataset[attr]); $$(`[data-${attr}]`).forEach((x) => { x.classList.toggle('on', x === b); x.setAttribute('aria-pressed', x === b); }); });
   pick('size', (v) => { size = v; });
-  pick('var', (v) => { variant = v; drawPics(); $('#sl').scrollTo({ left: 0 }); qty = Math.min(qty, Math.max(1, left())); if ($('#qn')) { $('#qn').textContent = qty; $('#left').textContent = `stok ${left()}`; } });
+  pick('var', (v) => { variant = v; drawPics(); $('#sl').scrollTo({ left: 0 }); qty = Math.min(qty, Math.max(1, left())); if ($('#qn')) { $('#qn').textContent = qty; if (!p.po) $('#left').textContent = `stok ${left()}`; } });
   $$('[data-q]').forEach((b) => b.onclick = () => { qty = Math.min(Math.max(1, left()), Math.max(1, qty + Number(b.dataset.q))); $('#qn').textContent = qty; });
   const put = () => {
     if (vars.length && !variant) { toast('Pilih varian dulu ya.'); $('[data-var]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return false; }
@@ -183,7 +188,7 @@ function favorites() {
 // ---------- keranjang & pesan ----------
 // Pesanan toko = COD ketemuan di sekitar Magetan. Pembeli memilih titik temu, atau mengetik sendiri.
 const SPOTS = ['Terminal Magetan', 'Pasar Sayur Magetan', 'Ambil di rumah (Waru, Milangasri, Panekan)'];
-const stockOf = (c) => (c.variant ? (c.p.variants || []).find((v) => v.name === c.variant)?.stock ?? 0 : c.p.stock || 0);
+const stockOf = (c) => (c.p.po ? PO_MAX : c.variant ? (c.p.variants || []).find((v) => v.name === c.variant)?.stock ?? 0 : c.p.stock || 0);
 function cartPage() {
   const ls = lines();
   if (!ls.length) { view.innerHTML = `<h1 class="page-h">Keranjang</h1><div class="empty"><p>Keranjang masih kosong.</p><a class="cta" href="#/">Mulai belanja ${I.arrow}</a></div>`; return; }
@@ -200,6 +205,7 @@ function cartPage() {
       <textarea id="bo" placeholder="Misal: depan Alun-alun Magetan" ${spot === 'other' ? '' : 'hidden'}>${esc(b.other)}</textarea>
       <label for="bt">Jam / catatan (opsional)</label><input type="text" id="bt" value="${esc(b.note)}" placeholder="Misal: Sabtu jam 4 sore">
       <p class="note">Bayar tunai saat ketemu. Jadwal pasti dikonfirmasi lewat WhatsApp.</p>
+      ${ls.some((c) => c.p.po) ? `<label class="agree"><input type="checkbox" id="poagree"> <span><b>Saya setuju syarat PO:</b> pesanan PO tidak bisa dibatalkan dan saya pasti datang mengambil sesuai janji. Jadilah pembeli yang amanah, jangan PHP ya.</span></label>` : ''}
     </form>
     <div class="buybar"><span class="tot"><small>Total (${count()} barang)</small><b id="tot"></b></span><button class="primary" id="send">${I.wa} Pesan via WhatsApp</button></div>`;
   $$('input[name=spot]').forEach((r) => r.onchange = () => { spot = r.value; $('#bo').hidden = spot !== 'other'; if (spot === 'other') $('#bo').focus(); });
@@ -225,9 +231,11 @@ function cartPage() {
     const where = spot === 'other' ? v.other : spot;
     const miss = [['bn', v.name], ['bp', v.phone], ['bo', where]].find(([, x]) => !x);
     if (miss) { toast(miss[0] === 'bo' ? 'Tulis tempat ketemuannya dulu ya.' : 'Isi nama dan no. HP dulu ya.'); $(`#${miss[0]}`).focus(); return; }
+    const hasPo = lines().some((c) => c.p.po);
+    if (hasPo && !$('#poagree').checked) { toast('Centang persetujuan PO dulu ya.'); $('#poagree').focus(); return; }
     const btn = $('#send'); btn.disabled = true; btn.textContent = 'Mengirim…';
-    const items = lines().map((c) => ({ id: c.id, name: c.p.name, size: c.size, variant: c.variant || '', qty: c.qty, price: c.p.price }));
-    const order = { name: v.name, phone: normalizePhone(v.phone) || v.phone, address: where, pay: 'cod', note: v.note, items, total: total() };
+    const items = lines().map((c) => ({ id: c.id, name: c.p.name, size: c.size, variant: c.variant || '', qty: c.qty, price: c.p.price, ...(c.p.po ? { po: c.p.poDays || '3-5 hari' } : {}) }));
+    const order = { name: v.name, phone: normalizePhone(v.phone) || v.phone, address: where, pay: 'cod', note: [v.note, hasPo ? 'Setuju syarat PO (tidak bisa batal)' : ''].filter(Boolean).join(' · '), items, total: total() };
     try { await createOrder(order); } catch (e) { console.error(e); } // WhatsApp tetap terbuka walau pencatatan gagal
     const url = `https://wa.me/${waNumber(shop?.wa)}?text=${encodeURIComponent(waText(order))}`;
     cart = []; save(KEY.cart, cart); badge();
@@ -246,13 +254,13 @@ const waNumber = (n) => { const d = String(n || '').replace(/\D/g, '') || WA_DEF
 function waText(o) {
   return [
     `Halo ${shop?.name || 'Kafiya Daily'}, saya mau pesan:`,
-    ...o.items.map((it, i) => `${i + 1}. ${it.name}${[it.variant, it.size].filter(Boolean).length ? ` (${[it.variant, it.size].filter(Boolean).join(', ')})` : ''} x${it.qty} = ${rupiah(it.price * it.qty)}`),
+    ...o.items.map((it, i) => `${i + 1}. ${it.name}${[it.variant, it.size].filter(Boolean).length ? ` (${[it.variant, it.size].filter(Boolean).join(', ')})` : ''}${it.po ? ` [PO ${it.po}]` : ''} x${it.qty} = ${rupiah(it.price * it.qty)}`),
     `Total: ${rupiah(o.total)}`,
     '',
     `Nama: ${o.name}`,
     `HP: ${o.phone}`,
     `Ketemuan COD: ${o.address}`,
-    o.note ? `Jam/catatan: ${o.note}` : '',
+    o.note ? `Catatan: ${o.note}` : '',
     `Pembayaran: COD ${rupiah(o.total)}`,
   ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
 }

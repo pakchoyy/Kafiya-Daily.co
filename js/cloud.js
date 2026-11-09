@@ -75,7 +75,7 @@ export async function saveProduct(p, photos) {
   const ref = p.id ? fs.doc(db, 'products', p.id) : fs.doc(fs.collection(db, 'products'));
   const data = {
     name: p.name, category: p.category || '', desc: p.desc || '', price: Number(p.price) || 0,
-    sizes: p.sizes || [], variants: p.variants || [], stock: Math.max(0, Number(p.stock) || 0), active: p.active !== false,
+    sizes: p.sizes || [], variants: p.variants || [], po: !!p.po, poDays: p.poDays || '', stock: Math.max(0, Number(p.stock) || 0), active: p.active !== false,
     sort: p.sort || Date.now(), updatedAt: Date.now(),
   };
   if (photos) {
