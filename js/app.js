@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 34; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 35; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -136,6 +136,9 @@ const ICON = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
   calendar: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  home: '<path d="M4 10.5 12 4l8 6.5V19a2 2 0 0 1-2 2h-3.5v-5.5h-5V21H6a2 2 0 0 1-2-2z"/>',
+  bag: '<path d="M5.5 8h13l-.9 11.1a2 2 0 0 1-2 1.9H8.4a2 2 0 0 1-2-1.9z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>',
+  store: '<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -158,17 +161,17 @@ function bindInstall() {
   if (b) b.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; render(); };
 }
 
-const EYEBROW = { Pesanan: 'Kafiya Daily', 'Pesanan baru': 'Buat label', Cetak: 'Stiker · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
+const EYEBROW = { Pesanan: 'Semua pesanan', Katalog: 'Produk di toko online', 'Pesanan baru': 'Buat label', Cetak: 'Stiker · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
 
 function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}) {
   app.innerHTML = `<header class="top">
     ${back ? `<a class="hbtn" href="#/" aria-label="Kembali">${ic('back', 22)}</a>` : '<span class="hbtn"></span>'}
     <img class="brand" src="${esc(shop.logo || DEFAULT_LOGOS.full)}" alt="${esc(shop.name)}">
-    <span class="hbtn"></span>
+    <a class="hbtn" href="#/pengaturan" aria-label="Pengaturan">${ic('gear', 22)}</a>
   </header>
   <main>${hero ? '' : `<p class="eyebrow">${esc(EYEBROW[title] || '')}</p><h1 class="display">${esc(title)}</h1>`}${body}</main>
   <nav class="bottom">
-    ${[['pesanan', '', 'list', 'Pesanan'], ['cetak', 'cetak', 'printer', 'Cetak'], ['baru', 'baru', 'plus', 'Baru'], ['pelanggan', 'pelanggan', 'users', 'Pelanggan'], ['pengaturan', 'pengaturan', 'gear', 'Atur']]
+    ${[['home', '', 'home', 'Beranda'], ['pesanan', 'pesanan', 'list', 'Pesanan'], ['baru', 'baru', 'plus', 'Baru'], ['cetak', 'cetak', 'printer', 'Cetak'], ['produk', 'produk', 'bag', 'Katalog']]
       .map(([k, h, i, l]) => k === 'baru'
         ? `<a href="#/baru" class="fab ${nav === k ? 'on' : ''}" aria-label="Pesanan baru"><span class="fab-in">${ic(i, 26)}</span></a>`
         : `<a href="#/${h}" class="${nav === k ? 'on' : ''}">${ic(i, 20)}<span>${l}</span></a>`).join('')}
@@ -205,6 +208,59 @@ function recapHTML(orders) {
       <span>${x.d.toLocaleDateString('id-ID', { weekday: 'short' }).slice(0, 3)}</span></div>`).join('')}</div>
     <div class="lg"><span class="lw">Wahana/ekspedisi ${tw}</span><span class="ls">Shopee ${ts}</span></div>
     ${codSum ? `<div class="muted" style="margin-top:8px">COD 7 hari: <b>${rupiah(codSum)}</b> dari ${codN} paket</div>` : ''}</div>`;
+}
+
+
+// ---------- Beranda (dashboard) ----------
+const nilai = (o) => Number(o.total) || Number(o.cod) || 0;
+async function viewDashboard() {
+  const orders = await db.all('orders');
+  const now = new Date(), d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const inDays = (o, n) => new Date(o.createdAt).getTime() >= d0 - (n - 1) * 864e5;
+  const todo = orders.filter((o) => !o.printed).length;
+  const today = orders.filter((o) => inDays(o, 1));
+  const week = orders.filter((o) => inDays(o, 7));
+  const due = orders.filter((o) => o.cod && !o.paid);
+  const hour = now.getHours();
+  const hi = hour < 11 ? 'Pagi' : hour < 15 ? 'Siang' : hour < 18 ? 'Sore' : 'Malam';
+  frame('Beranda', `<section class="dash-hi">
+      <p class="eyebrow">${now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+      <h1 class="display">${hi}, ${esc(shop.name || 'Kafiya Daily')}</h1>
+    </section>
+    <div class="tiles">
+      <a class="tile pink" href="#/cetak"><span>Label belum dicetak</span><b>${todo}</b><em>${todo ? 'Cetak sekarang' : 'Beres semua'} ${ic('chev', 16)}</em></a>
+      <a class="tile lime" href="#/pesanan"><span>Pesanan hari ini</span><b>${today.length}</b><em>Lihat pesanan ${ic('chev', 16)}</em></a>
+      <div class="tile wide"><span>Nilai pesanan tercatat · 7 hari</span><b>${rupiah(week.reduce((a, o) => a + nilai(o), 0))}</b><em class="muted">${week.length} pesanan</em></div>
+      ${due.length ? `<a class="tile lilac wide" href="#/pesanan" id="dueTile"><span>COD belum dibayar</span><b>${rupiah(due.reduce((a, o) => a + o.cod, 0))}</b><em>${due.length} pesanan ${ic('chev', 16)}</em></a>` : ''}
+    </div>
+    <div id="tokoDash"></div>
+    <h2>Menu cepat</h2>
+    <div class="quick">
+      <a href="#/baru">${ic('plus', 22)}<span>Pesanan baru</span></a>
+      <a href="#/cetak">${ic('printer', 22)}<span>Cetak label</span></a>
+      <a href="#/produk">${ic('bag', 22)}<span>Katalog</span></a>
+      <a href="#/pelanggan">${ic('users', 22)}<span>Pelanggan</span></a>
+      <a href="${esc(TOKO_URL)}" target="_blank" rel="noopener">${ic('store', 22)}<span>Lihat toko</span></a>
+      <a href="#/pengaturan">${ic('gear', 22)}<span>Pengaturan</span></a>
+    </div>
+    ${orders.length ? `<h2>Grafik paket</h2>${recapHTML(orders)}` : ''}
+    <div class="install-slot">${installCard()}</div>`, { nav: 'home', hero: true });
+  $('#dueTile')?.addEventListener('click', () => { listFilter.status = 'unpaid'; });
+  tokoDash();
+}
+
+// Info dari toko online: pesanan baru yang belum diambil dan stok yang menipis. Diam saja kalau belum login.
+async function tokoDash() {
+  if (!cloud.configured()) return;
+  try {
+    if (!await cloud.currentUser()) return;
+    const [fresh, list] = await Promise.all([cloud.listNewOrders(), cloud.listProducts({ all: true })]);
+    const low = list.filter((p) => p.active && (p.stock || 0) <= 2).sort((a, b) => (a.stock || 0) - (b.stock || 0));
+    const box = $('#tokoDash');
+    if (!box) return;
+    box.innerHTML = `${fresh.length ? `<a class="alertcard" href="#/baru">${ic('bag', 22)}<div class="grow"><b>${fresh.length} pesanan baru dari toko online</b><div class="muted">Ketuk untuk ambil dan buat labelnya.</div></div>${ic('chev', 18)}</a>` : ''}
+      ${low.length ? `<h2>Stok menipis</h2><div class="lowlist">${low.slice(0, 5).map((p) => `<a href="#/produk" class="low">${p.thumb ? `<img src="${esc(p.thumb)}" alt="">` : '<span class="ph"></span>'}<span class="grow ell">${esc(p.name)}</span><b class="${p.stock ? '' : 'zero'}">${p.stock ? `sisa ${p.stock}` : 'habis'}</b></a>`).join('')}</div>` : ''}`;
+  } catch (e) { console.error(e); }
 }
 
 // ---------- Pesanan ----------
@@ -547,7 +603,7 @@ async function saveItems() {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), paid: false, resi: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), total: it.web ? Number(it.web.total) || 0 : 0, paid: false, resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });
@@ -716,18 +772,18 @@ async function tokoSettings() {
 
 // Daftar produk toko online, untuk pemilik.
 async function viewProduk() {
-  frame('Produk', '<p class="muted">Memuat produk…</p>', { back: true, nav: 'pengaturan' });
+  frame('Katalog', '<p class="muted">Memuat produk…</p>', { nav: 'produk' });
   let user = null, list = [];
   try { user = cloud.configured() && await cloud.currentUser(); if (user) list = await cloud.listProducts({ all: true }); }
-  catch (e) { console.error(e); return frame('Produk', '<div class="empty"><p>Produk gagal dimuat. Periksa internet lalu coba lagi.</p><a class="btn block" href="#/produk">Coba lagi</a></div>', { back: true, nav: 'pengaturan' }); }
-  if (!user) return frame('Produk', '<div class="empty"><p>Login dulu di Atur → Toko online.</p><a class="btn block" href="#/pengaturan">Ke Atur</a></div>', { back: true, nav: 'pengaturan' });
-  frame('Produk', `<button class="btn block big" id="padd">${ic('plus', 20)} Tambah produk</button>
+  catch (e) { console.error(e); return frame('Katalog', '<div class="empty"><p>Produk gagal dimuat. Periksa internet lalu coba lagi.</p><a class="btn block" href="#/produk">Coba lagi</a></div>', { nav: 'produk' }); }
+  if (!user) return frame('Katalog', '<div class="empty"><p>Login dulu di Atur → Toko online.</p><a class="btn block" href="#/pengaturan">Ke Atur</a></div>', { nav: 'produk' });
+  frame('Katalog', `<button class="btn block big" id="padd">${ic('plus', 20)} Tambah produk</button>
     <div class="row spread" style="margin:14px 2px 4px"><span class="muted">${list.length} produk · ${list.filter((p) => p.active).length} tampil di toko</span><a class="btn ghost sm" href="${esc(TOKO_URL)}" target="_blank" rel="noopener">Lihat toko</a></div>
     ${list.length ? list.map((p) => `<div class="item" role="button" tabindex="0" data-pid="${p.id}">
       <span class="avatar" style="width:52px;height:68px;overflow:hidden">${p.thumb ? `<img src="${p.thumb}" alt="" style="width:100%;height:100%;object-fit:cover">` : ''}</span>
       <span class="grow"><span class="t ell" style="display:block">${esc(p.name)}</span><span class="muted" style="display:block">${rupiah(p.price)} · stok ${p.stock}</span></span>
       <span class="chip ${p.active ? (p.stock > 0 ? 'ok' : 'todo') : ''}">${p.active ? (p.stock > 0 ? 'Tampil' : 'Habis') : 'Disembunyikan'}</span></div>`).join('')
-    : '<div class="empty"><p>Belum ada produk. Tekan “Tambah produk” untuk mulai.</p></div>'}`, { back: true, nav: 'pengaturan' });
+    : '<div class="empty"><p>Belum ada produk. Tekan “Tambah produk” untuk mulai.</p></div>'}`, { nav: 'produk' });
   $('#padd').onclick = () => editProduk(null, list);
   $$('[data-pid]').forEach((el) => {
     const open = () => editProduk(list.find((p) => p.id === el.dataset.pid), list);
@@ -876,13 +932,14 @@ async function render() {
     else if (path === '/pelanggan') await viewPelanggan();
     else if (path === '/pengaturan') await viewPengaturan();
     else if (path === '/produk') await viewProduk();
-    else await viewPesanan();
+    else if (path === '/pesanan') await viewPesanan();
+    else await viewDashboard();
     window.scrollTo(0, 0);
   } catch (e) {
     console.error(e);
     app.innerHTML = `<main><div class="empty"><p>Halaman ini gagal dibuka. Data pesanan tetap aman di HP.</p>
       <button class="btn block" onclick="location.reload()">Muat ulang</button>
-      <a class="btn ghost block" href="#/">Kembali ke Pesanan</a>
+      <a class="btn ghost block" href="#/">Kembali ke Beranda</a>
       <a class="btn ghost block" href="#/pengaturan">Backup data</a></div></main>`;
   }
 }
