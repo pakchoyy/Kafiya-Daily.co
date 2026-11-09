@@ -1,4 +1,4 @@
-const CACHE = 'kafiya-v32';
+const CACHE = 'kafiya-v33';
 const SHELL = ['./', 'index.html', 'admin.html', 'toko/toko.js', 'toko/toko.css', 'styles.css', 'manifest.webmanifest', 'assets/logo-mark.png', 'assets/logo-full.png', 'icons/icon-192.png',
   'js/app.js', 'js/db.js', 'js/parser.js', 'js/logo.js', 'js/label.js', 'js/ocr.js', 'js/jpg.js', 'js/barcode.js', 'js/shopee.js', 'js/cloud.js', 'js/firebase-config.js'];
 
@@ -12,7 +12,7 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   // "Bagikan ke Kafiya" dari aplikasi lain: simpan file di cache, lalu buka halaman Pesanan baru.
-  if (req.method === 'POST' && new URL(req.url).pathname.endsWith('/share')) {
+  if (req.method === 'POST' && /\/(admin-)?share$/.test(new URL(req.url).pathname)) {
     e.respondWith((async () => {
       const files = (await req.formData()).getAll('files');
       const c = await caches.open('kafiya-share');
