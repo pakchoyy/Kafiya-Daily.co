@@ -4,13 +4,14 @@ import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
 import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, layout, COD_SELF } from './label.js';
 import { readAny } from './shopee.js';
+import * as cloud from './cloud.js';
 
 const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', COD_SELF, 'Lainnya'];
 const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 29; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 30; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -342,7 +343,8 @@ async function viewBaru() {
         <img class="sp-thumb" src="${it.img}" alt="">
         <label class="f">No. resi</label><input type="text" data-i="${i}" data-k="resi" value="${esc(it.resi)}" placeholder="Tidak terbaca, isi manual" autocapitalize="characters">
         <div class="muted" style="margin-top:4px">Di kertas: 7 × ${cm(it.h)} cm</div>${dupe(it, i)}</div>`
-    : `<div class="card item-card"><div class="row spread"><span class="chip">Pesanan ${i + 1} · chat</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+    : `<div class="card item-card"><div class="row spread"><span class="chip">Pesanan ${i + 1} · ${it.web ? 'toko online' : 'chat'}</span><button class="icon-btn" data-rm="${i}" aria-label="Buang">${ic('trash', 18)}</button></div>
+        ${it.web ? `<div class="muted" style="margin-top:6px">Dari toko: ${esc(it.web.items.map((x) => `${x.name}${x.size ? ` (${x.size})` : ''} x${x.qty}`).join(', '))} · ${esc(rupiah(it.web.total))}${it.web.note ? ` · Catatan: ${esc(it.web.note)}` : ''}</div>` : ''}
         <label class="f">Nama penerima</label><input type="text" data-i="${i}" data-k="name" value="${esc(it.name)}">
         <label class="f">No. HP</label><input type="tel" data-i="${i}" data-k="phone" value="${esc(it.phone)}" placeholder="Tidak ada di chat, isi kalau perlu">
         <label class="f">Alamat</label><textarea data-i="${i}" data-k="address" style="min-height:80px">${esc(it.address)}</textarea>
@@ -353,6 +355,7 @@ async function viewBaru() {
     <div class="row"><button class="btn big grow" id="up">${ic('camera', 20)} Upload screenshot</button><button class="btn ghost big" id="pdf">${ic('file', 18)} PDF</button></div>
     <input type="file" id="upf" accept="image/*" multiple hidden>
     <input type="file" id="pdff" accept="application/pdf,.pdf" multiple hidden>
+    <div id="tokobox"></div>
     <p class="muted" style="margin-top:8px">Bisa banyak sekaligus: <b>screenshot chat WhatsApp</b> jadi label Wahana, <b>screenshot atau PDF label Shopee</b> jadi label Shopee. PDF diambil dari folder file (misal Download), dan satu halaman berisi beberapa label juga bisa.</p>
     ${items.length ? `<div class="row spread" style="margin-top:20px"><h2 style="margin:0;border:0;flex:1">${items.length} pesanan siap</h2><button class="btn danger sm" id="reset">${ic('trash', 16)} Kosongkan semua</button></div>
     ${items.map(card).join('')}
@@ -397,6 +400,7 @@ async function viewBaru() {
   });
   $('#upf').onchange = (e) => { const files = [...e.target.files]; e.target.value = ''; handleFiles(files); };
   bindManual(d, customers);
+  tokoOrders();
   // File yang dibagikan dari aplikasi lain (Bagikan → Kafiya) disimpan service worker di cache.
   if (location.hash.includes('shared=1')) {
     history.replaceState(null, '', '#/baru');
@@ -509,6 +513,24 @@ function dupeChecker(existing, items) {
   return fn;
 }
 
+// Pesanan dari halaman toko (Firestore) yang belum diambil: tampil sebagai tombol di Pesanan baru.
+async function tokoOrders() {
+  if (!cloud.configured()) return;
+  try {
+    if (!await cloud.currentUser()) return;
+    const taken = new Set(draft.items.filter((it) => it.web).map((it) => it.web.id));
+    const fresh = (await cloud.listNewOrders()).filter((o) => !taken.has(o.id));
+    const box = $('#tokobox');
+    if (!box || !fresh.length) return;
+    box.innerHTML = `<button class="btn alt block" id="ambil">${ic('download', 18)} Ambil ${fresh.length} pesanan dari toko online</button>`;
+    $('#ambil').onclick = () => {
+      for (const o of fresh) draft.items.push({ kind: 'wahana', name: o.name, phone: o.phone, address: o.address, courier: 'Wahana', cod: o.pay === 'cod' ? o.total : 0, web: o });
+      toast(`${fresh.length} pesanan dari toko masuk daftar. Cek ekspedisi dan ongkirnya ya.`);
+      viewBaru();
+    };
+  } catch (e) { console.error(e); }
+}
+
 async function saveItems() {
   const items = draft.items;
   if (!items.length) return toast('Belum ada pesanan.');
@@ -531,6 +553,8 @@ async function saveItems() {
       await db.put('customers', { ...(hit || {}), name, phone, address });
     }
   }
+  // Pesanan dari toko: tandai sudah diambil dan kurangi stok produknya.
+  for (const it of items.filter((x) => x.web)) await cloud.markImported(it.web).catch((e) => { console.error(e); toast('Pesanan tersimpan, tapi status di toko online gagal diperbarui.', 'warn'); });
   draft.items = [];
   location.hash = `#/cetak?ids=${ids.join(',')}`;
 }
@@ -649,6 +673,121 @@ async function viewPelanggan() {
 }
 
 // ---------- Pengaturan ----------
+// ---------- Toko online (Firebase) ----------
+const TOKO_URL = new URL('toko/', location.href.split('#')[0]).href;
+
+async function tokoSettings() {
+  const box = $('#tokoset');
+  if (!box) return;
+  if (!cloud.configured()) {
+    box.innerHTML = `<p style="margin:0">Belum disambungkan ke Firebase.</p>
+      <p class="muted">Langkah penyiapan ada di file <b>FIREBASE.md</b> di repo. Setelah konfigurasi dipasang, login dan kelola produk dari sini.</p>`;
+    return;
+  }
+  const user = await cloud.currentUser().catch(() => null);
+  if (!user) {
+    box.innerHTML = `<p class="muted" style="margin-top:0">Login dengan akun pemilik untuk mengelola produk dan mengambil pesanan.</p>
+      <label class="f" for="tem">Email</label><input type="text" id="tem" inputmode="email" autocomplete="username">
+      <label class="f" for="tpw">Kata sandi</label><input type="password" id="tpw" autocomplete="current-password" style="width:100%;min-height:50px;padding:12px 14px;font-size:16px;border:1px solid var(--line);background:var(--card)">
+      <button class="btn block" id="tlogin">Login</button>`;
+    $('#tlogin').onclick = async () => {
+      const b = $('#tlogin'); b.disabled = true; b.textContent = 'Masuk…';
+      try { await cloud.login($('#tem').value.trim(), $('#tpw').value); toast('Login berhasil.'); tokoSettings(); }
+      catch (e) { console.error(e); toast('Login gagal. Periksa email dan kata sandi.', 'err'); b.disabled = false; b.textContent = 'Login'; }
+    };
+    return;
+  }
+  const pub = await cloud.getShopPublic().catch(() => null);
+  box.innerHTML = `<div class="muted" style="margin-top:0">Login sebagai <b>${esc(user.email)}</b></div>
+    <a class="btn block" href="#/produk">${ic('list', 18)} Kelola produk</a>
+    <a class="btn ghost block" href="${esc(TOKO_URL)}" target="_blank" rel="noopener">Buka halaman toko</a>
+    <button class="btn ghost block" id="tshare">Salin link toko</button>
+    <label class="f" for="tab">Deskripsi singkat di halaman toko</label><input type="text" id="tab" value="${esc(pub?.about || '')}" placeholder="Misal: Baju harian muslimah, ready stock">
+    <label class="f" for="twa">Nomor WhatsApp penerima pesanan</label><input type="tel" id="twa" inputmode="tel" value="${esc(pub?.wa || shop.phone || '')}">
+    <button class="btn alt block" id="tsave">Simpan info toko</button>
+    <button class="btn ghost block" id="tout">Logout</button>`;
+  $('#tsave').onclick = async () => {
+    try { await cloud.saveShopPublic({ name: shop.name, wa: $('#twa').value.trim(), about: $('#tab').value.trim() }); toast('Info toko disimpan.'); }
+    catch (e) { console.error(e); toast('Gagal menyimpan info toko.', 'err'); }
+  };
+  $('#tshare').onclick = async () => { try { await navigator.clipboard.writeText(TOKO_URL); toast('Link toko disalin.'); } catch { toast(TOKO_URL); } };
+  $('#tout').onclick = async () => { await cloud.logout(); toast('Sudah logout.'); tokoSettings(); };
+}
+
+// Daftar produk toko online, untuk pemilik.
+async function viewProduk() {
+  frame('Produk', '<p class="muted">Memuat produk…</p>', { back: true, nav: 'pengaturan' });
+  let user = null, list = [];
+  try { user = cloud.configured() && await cloud.currentUser(); if (user) list = await cloud.listProducts({ all: true }); }
+  catch (e) { console.error(e); return frame('Produk', '<div class="empty"><p>Produk gagal dimuat. Periksa internet lalu coba lagi.</p><a class="btn block" href="#/produk">Coba lagi</a></div>', { back: true, nav: 'pengaturan' }); }
+  if (!user) return frame('Produk', '<div class="empty"><p>Login dulu di Atur → Toko online.</p><a class="btn block" href="#/pengaturan">Ke Atur</a></div>', { back: true, nav: 'pengaturan' });
+  frame('Produk', `<button class="btn block big" id="padd">${ic('plus', 20)} Tambah produk</button>
+    <div class="row spread" style="margin:14px 2px 4px"><span class="muted">${list.length} produk · ${list.filter((p) => p.active).length} tampil di toko</span><a class="btn ghost sm" href="${esc(TOKO_URL)}" target="_blank" rel="noopener">Lihat toko</a></div>
+    ${list.length ? list.map((p) => `<div class="item" role="button" tabindex="0" data-pid="${p.id}">
+      <span class="avatar" style="width:52px;height:68px;overflow:hidden">${p.thumb ? `<img src="${p.thumb}" alt="" style="width:100%;height:100%;object-fit:cover">` : ''}</span>
+      <span class="grow"><span class="t ell" style="display:block">${esc(p.name)}</span><span class="muted" style="display:block">${rupiah(p.price)} · stok ${p.stock}</span></span>
+      <span class="chip ${p.active ? (p.stock > 0 ? 'ok' : 'todo') : ''}">${p.active ? (p.stock > 0 ? 'Tampil' : 'Habis') : 'Disembunyikan'}</span></div>`).join('')
+    : '<div class="empty"><p>Belum ada produk. Tekan “Tambah produk” untuk mulai.</p></div>'}`, { back: true, nav: 'pengaturan' });
+  $('#padd').onclick = () => editProduk(null, list);
+  $$('[data-pid]').forEach((el) => {
+    const open = () => editProduk(list.find((p) => p.id === el.dataset.pid), list);
+    el.onclick = open; el.onkeydown = (e) => { if (e.key === 'Enter') open(); };
+  });
+}
+
+async function editProduk(p, list) {
+  const cats = [...new Set(list.map((x) => x.category).filter(Boolean))];
+  let photos = null; // null = foto tidak diubah
+  const shown = p?.photoCount ? await cloud.getPhotos(p).catch(() => []) : [];
+  modal(`<h2>${p ? 'Ubah produk' : 'Produk baru'}</h2>
+    <label class="f">Foto (maks. 5, foto pertama jadi sampul)</label>
+    <div class="pthumbs" id="pth"></div>
+    <input type="file" id="pf" accept="image/*" multiple hidden>
+    <button class="btn ghost block" id="pfb">${ic('camera', 18)} Pilih foto</button>
+    <label class="f" for="pn">Nama produk</label><input type="text" id="pn" value="${esc(p?.name || '')}">
+    <label class="f" for="pc">Kategori</label><input type="text" id="pc" list="pcl" value="${esc(p?.category || '')}" placeholder="Misal: Gamis"><datalist id="pcl">${cats.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
+    <div class="row"><div class="grow"><label class="f" for="pp">Harga (Rp)</label><input type="text" id="pp" inputmode="numeric" value="${p?.price ? p.price.toLocaleString('id-ID') : ''}"></div>
+    <div style="width:110px"><label class="f" for="ps">Stok</label><input type="number" id="ps" min="0" value="${p?.stock ?? 1}"></div></div>
+    <label class="f" for="pz">Ukuran (pisahkan dengan koma, kosongkan kalau all size)</label><input type="text" id="pz" value="${esc((p?.sizes || []).join(', '))}" placeholder="S, M, L, XL">
+    <label class="f" for="pd">Deskripsi</label><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>
+    <div class="row" style="margin-top:12px"><input type="checkbox" id="pa" ${p?.active === false ? '' : 'checked'}><label for="pa">Tampilkan di toko</label></div>
+    <button class="btn block" id="psave">Simpan produk</button>
+    ${p ? `<button class="btn danger block" id="pdel">${ic('trash', 18)} Hapus produk</button>` : ''}`, (m, close) => {
+    const cur = () => photos || shown;
+    const draw = () => {
+      $('#pth', m).innerHTML = cur().map((src, i) => `<span><img src="${src}" alt="Foto ${i + 1}"><button class="icon-btn" data-px="${i}" aria-label="Hapus foto ${i + 1}">${ic('trash', 16)}</button></span>`).join('');
+      $$('[data-px]', m).forEach((b) => b.onclick = () => { photos = cur().filter((_, j) => j !== Number(b.dataset.px)); draw(); });
+    };
+    draw();
+    $('#pfb', m).onclick = () => $('#pf', m).click();
+    $('#pf', m).onchange = async (e) => {
+      const files = [...e.target.files].slice(0, 5 - cur().length); e.target.value = '';
+      const b = $('#pfb', m); b.disabled = true;
+      try {
+        const add = [];
+        for (const [i, f] of files.entries()) { b.textContent = `Mengecilkan foto ${i + 1}/${files.length}…`; add.push(await cloud.shrink(f)); }
+        photos = [...cur(), ...add].slice(0, 5); draw();
+      } catch (err) { console.error(err); toast('Foto gagal dibaca.', 'err'); }
+      b.disabled = false; b.innerHTML = `${ic('camera', 18)} Pilih foto`;
+    };
+    $('#psave', m).onclick = async () => {
+      const v = { ...(p || {}), name: $('#pn', m).value.trim(), category: $('#pc', m).value.trim(), price: toCod($('#pp', m).value),
+        stock: Number($('#ps', m).value) || 0, sizes: $('#pz', m).value.split(',').map((x) => x.trim()).filter(Boolean),
+        desc: $('#pd', m).value.trim(), active: $('#pa', m).checked };
+      if (!v.name || !v.price) return toast('Nama dan harga wajib diisi.');
+      if (!p && !cur().length) return toast('Tambahkan minimal satu foto.');
+      const b = $('#psave', m); b.disabled = true; b.textContent = 'Menyimpan…';
+      try { await cloud.saveProduct(v, photos); close(); toast('Produk disimpan.'); viewProduk(); }
+      catch (err) { console.error(err); toast('Gagal menyimpan produk. Periksa internet.', 'err'); b.disabled = false; b.textContent = 'Simpan produk'; }
+    };
+    $('#pdel', m)?.addEventListener('click', async () => {
+      if (!await ask('Hapus produk ini?', `${p.name} hilang dari toko.`, { ok: 'Hapus', danger: true })) return;
+      try { await cloud.deleteProduct(p); close(); toast('Produk dihapus.'); viewProduk(); }
+      catch (err) { console.error(err); toast('Gagal menghapus produk.', 'err'); }
+    });
+  });
+}
+
 async function viewPengaturan() {
   const lb = shop.lastBackup ? fmtDate(shop.lastBackup) : 'belum pernah';
   const stepper = (k, labelA, labelB) => `<div class="row spread" style="margin-top:8px"><span>${labelA}</span>
@@ -685,12 +824,14 @@ async function viewPengaturan() {
       <input type="file" id="rf" accept="application/json,.json" hidden>
       <button class="btn ghost block" id="rs">Restore dari file</button>
     </div>
+    <h2>Toko online</h2><div class="card" id="tokoset"><p class="muted" style="margin:0">Memuat…</p></div>
     <h2>Aplikasi</h2><div class="install-slot">${installCard() || '<div class="banner ok">Aplikasi sudah terpasang.</div>'}</div>
     <p class="muted" style="text-align:center">Semua data tersimpan di HP ini, tanpa server.<br>Versi ${APP_VERSION}</p>`, { nav: 'pengaturan' });
 
   const showSt = () => { $('#v-dx').textContent = `${shop.dx} mm`; $('#v-dy').textContent = `${shop.dy} mm`; };
   showSt();
   $('#sn').onchange = (e) => saveShop({ name: e.target.value.trim() || 'Kafiya Daily.co' });
+  tokoSettings();
   $('#sp').onchange = (e) => saveShop({ phone: e.target.value.trim() });
   $('#bw').onchange = (e) => saveShop({ bw: e.target.checked });
   $$('[data-theme]').forEach((b) => b.onclick = async () => { await saveShop({ theme: b.dataset.theme }); applyTheme(); viewPengaturan(); });
@@ -734,6 +875,7 @@ async function render() {
     else if (path === '/cetak') await viewCetak(qs);
     else if (path === '/pelanggan') await viewPelanggan();
     else if (path === '/pengaturan') await viewPengaturan();
+    else if (path === '/produk') await viewProduk();
     else await viewPesanan();
     window.scrollTo(0, 0);
   } catch (e) {
