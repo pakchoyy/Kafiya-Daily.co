@@ -12,7 +12,7 @@ Data aplikasi cetak tersimpan di HP (IndexedDB). Toko online memakai Firebase (p
 - **Cetak**: kolom 7 cm di tengah kertas (A4, F4, atau F4 lewat setelan printer *Indian Legal*), label ditumpuk dari atas,
   jumlah lembar menyesuaikan, garis bantu gunting di sekeliling label. Bisa juga unduh JPG per lembar.
 - **Riwayat**: cari, filter tanggal dan status, pilih banyak (cetak / tandai / hapus), rekap 7 hari.
-- **Toko online** (`/toko/`): katalog untuk pembeli, keranjang, pesan via WhatsApp. Produk dikelola dari menu Produk;
+- **Toko online** (alamat utama `/`; admin di `/admin.html`, buka dengan mengetuk logo): katalog untuk pembeli, keranjang, pesan via WhatsApp. Produk dikelola dari menu Produk;
   pesanan masuk ke Pesanan baru dan stok berkurang otomatis. Penyiapan Firebase: lihat `FIREBASE.md`.
 - **Pengaturan**: data toko, logo, kertas, geser posisi cetak per 1 mm, halaman tes, mode gelap, backup/restore JSON.
 

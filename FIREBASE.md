@@ -1,6 +1,6 @@
 # Menyambungkan toko online ke Firebase (paket gratis, tanpa kartu)
 
-Toko online (`/toko/`) dan menu **Produk** di aplikasi memakai Firebase: Firestore untuk data, Authentication
+Toko online (alamat utama `/`) dan menu **Produk** di aplikasi memakai Firebase: Firestore untuk data, Authentication
 untuk login pemilik. Foto produk dikecilkan di HP lalu disimpan di Firestore, jadi **Storage tidak dipakai**
 dan tidak perlu paket Blaze.
 
@@ -47,7 +47,7 @@ dan tidak perlu paket Blaze.
 1. Aplikasi → **Atur → Toko online** → login dengan email dan kata sandi pemilik.
 2. **Simpan info toko** (deskripsi dan nomor WhatsApp penerima pesanan).
 3. **Kelola produk** → tambah produk dengan foto, harga, ukuran, stok.
-4. Bagikan link toko: `https://kafiya-daily.vercel.app/toko/`.
+4. Bagikan link toko: `https://kafiya-daily.vercel.app/ (admin: /admin.html, atau ketuk logo di toko)`.
 5. Pesanan pembeli muncul di **Pesanan baru → Ambil n pesanan dari toko online**. Setelah disimpan,
    stok produk berkurang otomatis.
 
