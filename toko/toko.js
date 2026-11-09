@@ -172,7 +172,7 @@ async function detail(id) {
     save(KEY.cart, cart); badge(); return true;
   };
   $('#add')?.addEventListener('click', () => { if (put()) toast(`Masuk keranjang (${count()} barang).`); });
-  $('#try')?.addEventListener('click', () => tryOn(pics()[Math.round($('#sl').scrollLeft / $('#sl').clientWidth)] || pics()[0], p.name));
+  $('#try')?.addEventListener('click', () => tryOn(p, pics()[Math.round($('#sl').scrollLeft / $('#sl').clientWidth)] || pics()[0]));
   $('#buy')?.addEventListener('click', () => { if (put()) location.hash = '#/keranjang'; });
   if (p.photoCount && !photoCache.has(p.id)) {
     const got = await getPhotos(p).catch(() => []);
@@ -181,48 +181,99 @@ async function detail(id) {
 }
 
 // ---------- coba baju pakai kamera ----------
-// Kamera depan + foto baju ditempel di atasnya. Baju bisa digeser (seret), diperbesar (slider),
-// dan dibuat transparan, lalu hasilnya disimpan sebagai foto. Ini cermin bantu, bukan AR penuh.
-async function tryOn(src, name) {
-  if (!src) return toast('Produk ini belum punya foto.');
-  let stream, facing = 'user';
+// Kamera + potongan baju (latar sudah dihapus di admin). Pendeteksi badan MediaPipe membaca posisi bahu,
+// lalu baju otomatis menempel, ikut miring dan ikut membesar/mengecil. Bisa dimatikan lalu digeser manual.
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const POSE_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+let poseP;
+const loadPose = () => (poseP ||= (async () => {
+  const v = await import(`${MP}/vision_bundle.mjs`);
+  const files = await v.FilesetResolver.forVisionTasks(`${MP}/wasm`);
+  const make = (delegate) => v.PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: POSE_MODEL, delegate }, runningMode: 'VIDEO', numPoses: 1 });
+  return make('GPU').catch(() => make('CPU'));
+})().catch((e) => { poseP = null; throw e; }));
+
+async function tryOn(p, src) {
+  const cloth = p.cutout || src;
+  if (!cloth) return toast('Produk ini belum punya foto.');
+  let stream, facing = 'user', follow = true, raf = 0, pose = null, lastT = -1;
+  const st = { x: 0, y: 0, w: 0, a: 0 }; // titik leher (px), lebar baju (px), sudut (rad)
   const o = document.createElement('div');
   o.className = 'try';
-  o.innerHTML = `<div class="try-stage"><video playsinline muted autoplay></video><img class="try-cloth" src="${src}" alt="${esc(name)}"></div>
-    <div class="try-ui"><p>Seret baju ke badan, atur ukuran dan tembus pandang.</p>
-      <label>Ukuran<input type="range" id="tsz" min="20" max="140" value="60"></label>
-      <label>Tembus pandang<input type="range" id="top" min="30" max="100" value="85"></label>
-      <div class="try-btns"><button id="tflip">Balik kamera</button><button id="tshot" class="go">Simpan foto</button><button id="tclose">Tutup</button></div></div>`;
+  o.innerHTML = `<div class="try-stage"><video playsinline muted autoplay></video><img class="try-cloth" src="${cloth}" alt="${esc(p.name)}">
+      <div class="try-status" id="tst">Menyalakan kamera…</div></div>
+    <div class="try-ui">${p.cutout ? '' : '<p>Foto ini belum dihapus latarnya oleh admin, jadi latarnya ikut tampil.</p>'}
+      <label>Ukuran<input type="range" id="tsz" min="50" max="170" value="100"></label>
+      <label>Tembus pandang<input type="range" id="top" min="40" max="100" value="${p.cutout ? 100 : 80}"></label>
+      <div class="try-btns"><button id="tfol" aria-pressed="true">Ikuti badan</button><button id="tshot" class="go">Simpan foto</button><button id="tflip">Balik</button><button id="tclose">Tutup</button></div></div>`;
   document.body.append(o); document.body.style.overflow = 'hidden';
-  const v = o.querySelector('video'), img = o.querySelector('.try-cloth'), stage = o.querySelector('.try-stage');
-  let x = 0.5, y = 0.55; // posisi tengah baju, relatif terhadap layar
-  const place = () => { img.style.left = `${x * 100}%`; img.style.top = `${y * 100}%`; img.style.width = `${o.querySelector('#tsz').value}%`; img.style.opacity = o.querySelector('#top').value / 100; };
-  const start = async () => {
-    stream?.getTracks().forEach((t) => t.stop());
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing }, audio: false }); v.srcObject = stream; v.classList.toggle('mirror', facing === 'user'); }
-    catch (e) { console.error(e); toast('Kamera tidak bisa dibuka. Izinkan kamera untuk situs ini.'); }
+  const v = o.querySelector('video'), img = o.querySelector('.try-cloth'), stage = o.querySelector('.try-stage'), status = o.querySelector('#tst');
+  const size = () => Number(o.querySelector('#tsz').value) / 100;
+  const say = (t) => { status.textContent = t; status.hidden = !t; };
+  const draw = () => {
+    img.style.width = `${st.w}px`; img.style.left = `${st.x}px`; img.style.top = `${st.y}px`;
+    img.style.transform = `translate(-50%, -12%) rotate(${st.a}rad)`; img.style.opacity = Number(o.querySelector('#top').value) / 100;
   };
-  const close = () => { stream?.getTracks().forEach((t) => t.stop()); o.remove(); document.body.style.overflow = ''; };
+  const manual = () => { const r = stage.getBoundingClientRect(); st.w = r.width * 0.62 * size(); draw(); };
+  const r0 = stage.getBoundingClientRect(); st.x = r0.width / 2; st.y = r0.height * 0.32; manual();
+  // koordinat video (0..1) -> piksel layar, memperhitungkan object-fit: cover dan cermin kamera depan
+  const toScreen = (lm) => {
+    const r = stage.getBoundingClientRect(), vw = v.videoWidth, vh = v.videoHeight, k = Math.max(r.width / vw, r.height / vh);
+    let x = lm.x * vw * k + (r.width - vw * k) / 2; const y = lm.y * vh * k + (r.height - vh * k) / 2;
+    if (facing === 'user') x = r.width - x;
+    return { x, y };
+  };
+  const loop = () => {
+    raf = requestAnimationFrame(loop);
+    if (!follow || !pose || v.readyState < 2 || v.currentTime === lastT) return;
+    lastT = v.currentTime;
+    const lm = pose.detectForVideo(v, performance.now()).landmarks?.[0];
+    if (!lm || (lm[11].visibility ?? 1) < 0.5 || (lm[12].visibility ?? 1) < 0.5) { say('Mundur sedikit sampai kedua bahu terlihat'); return; }
+    say('');
+    const A = toScreen(lm[11]), B = toScreen(lm[12]);
+    const [L, R] = A.x < B.x ? [A, B] : [B, A];
+    const sw = Math.hypot(R.x - L.x, R.y - L.y);
+    // bahu baju di foto gantungan kira-kira 55% lebar potongan
+    const t = { x: (L.x + R.x) / 2, y: (L.y + R.y) / 2 - sw * 0.12, w: (sw / 0.55) * size(), a: Math.atan2(R.y - L.y, R.x - L.x) };
+    for (const k of ['x', 'y', 'w', 'a']) st[k] += (t[k] - st[k]) * 0.45; // haluskan gerakan
+    draw();
+  };
+  const start = async () => {
+    stream?.getTracks().forEach((x) => x.stop());
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: facing, width: { ideal: 1280 } }, audio: false }); v.srcObject = stream; v.classList.toggle('mirror', facing === 'user'); }
+    catch (e) { console.error(e); say('Kamera tidak bisa dibuka. Izinkan kamera untuk situs ini.'); return; }
+    if (!pose && follow) {
+      say('Memuat pendeteksi badan…');
+      try { pose = await loadPose(); say('Berdiri menghadap kamera, kedua bahu terlihat'); }
+      catch (e) { console.error(e); follow = false; setFollow(false); say('Pendeteksi badan gagal dimuat. Geser baju secara manual.'); }
+    }
+  };
+  const setFollow = (on) => { follow = on; const b = o.querySelector('#tfol'); b.setAttribute('aria-pressed', on); b.textContent = on ? 'Ikuti badan' : 'Geser manual'; b.classList.toggle('on', on); if (on && !pose) start(); if (!on) { say(''); manual(); } };
+  const close = () => { cancelAnimationFrame(raf); stream?.getTracks().forEach((x) => x.stop()); o.remove(); document.body.style.overflow = ''; };
   img.addEventListener('pointerdown', (e) => {
-    e.preventDefault(); img.setPointerCapture(e.pointerId);
-    const r = stage.getBoundingClientRect();
-    const move = (ev) => { x = Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)); y = Math.min(1, Math.max(0, (ev.clientY - r.top) / r.height)); place(); };
-    img.onpointermove = move; img.onpointerup = () => { img.onpointermove = null; };
+    e.preventDefault(); if (follow) setFollow(false);
+    img.setPointerCapture(e.pointerId);
+    const r = stage.getBoundingClientRect(), dx = st.x - (e.clientX - r.left), dy = st.y - (e.clientY - r.top);
+    img.onpointermove = (ev) => { st.x = ev.clientX - r.left + dx; st.y = ev.clientY - r.top + dy; draw(); };
+    img.onpointerup = () => { img.onpointermove = null; };
   });
-  o.querySelector('#tsz').oninput = place; o.querySelector('#top').oninput = place;
+  o.querySelector('#tsz').oninput = () => (follow ? null : manual());
+  o.querySelector('#top').oninput = draw;
+  o.querySelector('#tfol').onclick = () => setFollow(!follow);
+  o.querySelector('#tfol').classList.add('on');
   o.querySelector('#tflip').onclick = () => { facing = facing === 'user' ? 'environment' : 'user'; start(); };
   o.querySelector('#tclose').onclick = close;
   o.querySelector('#tshot').onclick = () => {
-    const r = stage.getBoundingClientRect(), c = document.createElement('canvas');
-    c.width = Math.round(r.width * 2); c.height = Math.round(r.height * 2);
+    const r = stage.getBoundingClientRect(), s = 2, c = document.createElement('canvas');
+    c.width = Math.round(r.width * s); c.height = Math.round(r.height * s);
     const g = c.getContext('2d'), vw = v.videoWidth || 1, vh = v.videoHeight || 1, k = Math.max(c.width / vw, c.height / vh);
     g.save(); if (facing === 'user') { g.translate(c.width, 0); g.scale(-1, 1); }
     g.drawImage(v, (c.width - vw * k) / 2, (c.height - vh * k) / 2, vw * k, vh * k); g.restore();
-    const w = c.width * o.querySelector('#tsz').value / 100, h = w * (img.naturalHeight / img.naturalWidth);
-    g.globalAlpha = o.querySelector('#top').value / 100; g.drawImage(img, x * c.width - w / 2, y * c.height - h / 2, w, h);
-    c.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `coba-${name.replace(/\W+/g, '-').toLowerCase()}.jpg`; a.click(); toast('Foto tersimpan di HP.'); }, 'image/jpeg', 0.9);
+    const w = st.w * s, h = w * (img.naturalHeight / img.naturalWidth);
+    g.save(); g.globalAlpha = Number(o.querySelector('#top').value) / 100; g.translate(st.x * s, st.y * s); g.rotate(st.a); g.drawImage(img, -w / 2, -h * 0.12, w, h); g.restore();
+    c.toBlob((bl) => { const a = document.createElement('a'); a.href = URL.createObjectURL(bl); a.download = `coba-${p.name.replace(/\W+/g, '-').toLowerCase()}.jpg`; a.click(); toast('Foto tersimpan di HP.'); }, 'image/jpeg', 0.9);
   };
-  place(); start();
+  start(); loop();
 }
 
 // ---------- favorit ----------

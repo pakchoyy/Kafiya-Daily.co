@@ -78,6 +78,7 @@ export async function saveProduct(p, photos) {
     sizes: p.sizes || [], variants: p.variants || [], po: !!p.po, poDays: p.poDays || '', stock: Math.max(0, Number(p.stock) || 0), active: p.active !== false,
     sort: p.sort || Date.now(), updatedAt: Date.now(),
   };
+  if (p.cutout !== undefined) data.cutout = p.cutout || '';
   if (photos) {
     const old = p.photoCount || 0;
     for (const [i, src] of photos.entries()) await fs.setDoc(fs.doc(db, 'photos', `${ref.id}_${i}`), { data: src });
@@ -135,6 +136,39 @@ export async function markImported(order) {
     } else batch.update(snap.ref, { stock: Math.max(0, (d.stock || 0) - n) });
   }
   await batch.commit();
+}
+
+// ---------- potongan baju untuk "Coba pakai kamera" ----------
+// Latar belakang foto dihapus di HP admin (model AI ±45 MB, diunduh sekali lalu tersimpan di cache browser).
+// Hasilnya PNG/WebP transparan yang dipotong rapat ke bajunya, disimpan bersama produk.
+const BG_LIB = 'https://esm.sh/@imgly/background-removal@1.4.5';
+export async function cutout(src, onProgress) {
+  const { removeBackground } = await import(BG_LIB);
+  const input = typeof src === 'string' ? await (await fetch(src)).blob() : src;
+  const blob = await removeBackground(input, {
+    model: 'small', output: { format: 'image/png' },
+    progress: (key, cur, total) => onProgress?.(key.startsWith('fetch') ? `Mengunduh model AI ${Math.round((cur / total) * 100)}%` : 'Menghapus latar…'),
+  });
+  const img = await loadImg(URL.createObjectURL(blob));
+  // potong rapat ke area yang tidak transparan
+  const c0 = document.createElement('canvas'); c0.width = img.width; c0.height = img.height;
+  const g0 = c0.getContext('2d'); g0.drawImage(img, 0, 0);
+  const px = g0.getImageData(0, 0, c0.width, c0.height).data;
+  let x0 = c0.width, y0 = c0.height, x1 = 0, y1 = 0;
+  for (let y = 0; y < c0.height; y++) for (let x = 0; x < c0.width; x++) if (px[(y * c0.width + x) * 4 + 3] > 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 <= x0 || y1 <= y0) throw new Error('Baju tidak terdeteksi di foto.');
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  let side = 640, out = '';
+  for (let t = 0; t < 6; t++) {
+    const k = Math.min(1, side / Math.max(w, h));
+    const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
+    c.getContext('2d').drawImage(c0, x0, y0, w, h, 0, 0, c.width, c.height);
+    out = c.toDataURL('image/webp', 0.8);
+    if (!out.startsWith('data:image/webp')) out = c.toDataURL('image/png');
+    if (out.length * 0.75 <= 150e3) return out;
+    side = Math.round(side * 0.8);
+  }
+  return out;
 }
 
 // ---------- foto ----------

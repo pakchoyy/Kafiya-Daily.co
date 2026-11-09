@@ -197,3 +197,9 @@ body.detail { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 .try-btns { display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 8px; }
 .try-btns button { min-height: 48px; border: var(--b); border-radius: 14px; background: var(--card); font-weight: 800; cursor: pointer; }
 .try-btns .go { background: var(--ink); color: #fff; }
+
+.try-status { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); max-width: 90%; padding: 8px 14px; border: var(--b); border-radius: 999px; background: var(--lime); font-size: 13px; font-weight: 800; text-align: center; }
+.try-status[hidden] { display: none; }
+.try-cloth { transform-origin: 50% 12%; filter: drop-shadow(0 8px 14px rgba(0,0,0,.35)); }
+.try-btns { grid-template-columns: 1.2fr 1.3fr .8fr .9fr; }
+.try-btns button.on { background: var(--lime); }
