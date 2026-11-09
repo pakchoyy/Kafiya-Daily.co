@@ -172,3 +172,6 @@ body.detail { padding-bottom: calc(100px + env(safe-area-inset-bottom)); }
 .spots label:has(input:checked) { background: var(--lime); }
 .box #bo { margin-top: 8px; }
 .box .note { margin-top: 16px; }
+
+.sz img { width: 28px; height: 28px; border-radius: 8px; object-fit: cover; margin: -4px 8px -4px -6px; vertical-align: middle; display: inline-block; }
+.sz:has(img) { display: inline-flex; align-items: center; }

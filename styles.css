@@ -401,3 +401,14 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .gate { min-height: 100vh; display: flex; flex-direction: column; justify-content: center; padding-bottom: 60px; }
 .gate-logo { height: 56px; width: auto; align-self: flex-start; margin-bottom: 18px; }
 .gate input[type=password] { width: 100%; min-height: 50px; padding: 12px 14px; font-size: 16px; background: var(--card); border: 2px solid var(--edge); border-radius: 12px; }
+
+/* ---------- suara & foto varian ---------- */
+.withmic { position: relative; }
+.withmic input, .withmic textarea { padding-right: 52px; }
+.mic { position: absolute; right: 4px; top: 3px; width: 44px; height: 44px; border: 0; border-radius: 10px; background: transparent; color: var(--text); display: grid; place-items: center; cursor: pointer; }
+.mic.on, #pvoice.on { background: var(--pink); color: #1E1512; animation: micpulse 1s ease-in-out infinite alternate; }
+@keyframes micpulse { to { box-shadow: 0 0 0 6px color-mix(in srgb, var(--pink) 35%, transparent); } }
+.catq { margin: 8px 0 0; padding-left: 0; padding-right: 0; }
+.pv-row { grid-template-columns: 44px 1fr 70px 44px; }
+.pv-ph { width: 44px; height: 44px; padding: 0; border: 2px solid var(--edge); border-radius: 10px; background: var(--tint); color: var(--muted); overflow: hidden; display: grid; place-items: center; cursor: pointer; }
+.pv-ph img { width: 100%; height: 100%; object-fit: cover; }
