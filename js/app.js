@@ -2,15 +2,15 @@ import * as db from './db.js';
 import { parseChat, normalizePhone, rupiah } from './parser.js';
 import { sheetJPG, downloadBlob } from './jpg.js';
 import { processLogo, logoSet, DEFAULT_LOGOS } from './logo.js';
-import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, layout } from './label.js';
+import { labelHTML, fitLabel, sheetsHTML, testSheetHTML, printHTML, esc, PAPERS, layout, COD_SELF } from './label.js';
 import { readAny } from './shopee.js';
 
-const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', 'Lainnya'];
+const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', COD_SELF, 'Lainnya'];
 const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 28; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 29; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -58,14 +58,16 @@ function editOrder(o, onDone) {
     <label class="f">No. HP</label><input type="tel" id="ep" value="${esc(o.phone)}">
     <label class="f">Alamat</label><textarea id="ea">${esc(o.address)}</textarea>
     <label class="f">Ekspedisi</label><input type="text" id="ec" value="${esc(o.courier)}">
-    <label class="f">COD (kosongkan kalau bukan COD)</label><input type="text" id="ecod" inputmode="numeric" value="${o.cod ? esc(o.cod.toLocaleString('id-ID')) : ''}" placeholder="Contoh: 150.000">` : ''}
+    <label class="f">COD (kosongkan kalau bukan COD)</label><input type="text" id="ecod" inputmode="numeric" value="${o.cod ? esc(o.cod.toLocaleString('id-ID')) : ''}" placeholder="Contoh: 150.000">
+    <div class="row" style="margin-top:12px"><input type="checkbox" id="epaid" ${o.paid ? 'checked' : ''}><label for="epaid">COD sudah dibayar (lunas)</label></div>` : ''}
     <label class="f">No. resi${w ? ' (catatan)' : ''}</label><input type="text" id="er" value="${esc(o.resi)}" autocapitalize="characters">
     <div class="row" style="margin-top:12px"><input type="checkbox" id="eprt" ${o.printed ? 'checked' : ''}><label for="eprt">Sudah dicetak</label></div>
     <button class="btn block" id="es">Simpan perubahan</button>
     <button class="btn danger block" id="ed">${ic('trash', 18)} Hapus pesanan</button>`, (m, close) => {
     $('#es', m).onclick = async () => {
       const v = { ...o, resi: $('#er', m).value.replace(/\s+/g, '').toUpperCase(), printed: $('#eprt', m).checked };
-      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', cod: toCod($('#ecod', m).value) });
+      if (w) Object.assign(v, { name: $('#en', m).value.trim(), phone: normalizePhone($('#ep', m).value) || $('#ep', m).value.trim(), address: $('#ea', m).value.trim(), courier: $('#ec', m).value.trim() || 'Wahana', cod: toCod($('#ecod', m).value), paid: $('#epaid', m).checked });
+      if (w && v.courier === COD_SELF && !v.cod) return toast('Isi nominal COD untuk COD antar sendiri.');
       if (w ? !v.name || !v.address : !v.resi) return toast(w ? 'Nama dan alamat wajib diisi.' : 'No. resi wajib diisi.');
       await db.put('orders', v); close(); toast('Pesanan disimpan.'); onDone();
     };
@@ -75,7 +77,9 @@ function editOrder(o, onDone) {
     };
   });
 }
-const resiText = (o) => (o.resi ? esc(o.resi) : '<span class="chip todo">Resi belum ada</span>');
+// Judul baris: Shopee dikenali dari resinya, pesanan chat dari nama penerimanya.
+const resiText = (o) => (o.type.startsWith('shopee') ? esc(o.resi || 'Resi belum terbaca') : esc(o.name));
+const metaText = (o) => (o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)}${o.cod ? ` · ${esc(rupiah(o.cod))}` : ''}`);
 const orderBtns = (o) => `<button class="icon-btn" data-edit="${o.id}" aria-label="Ubah">${ic('edit', 18)}</button><button class="icon-btn" data-del="${o.id}" aria-label="Hapus">${ic('trash', 18)}</button>`;
 function bindOrderBtns(orders, refresh) {
   $$('[data-edit]').forEach((b) => b.onclick = (e) => { e.preventDefault(); editOrder(orders.find((o) => o.id === Number(b.dataset.edit)), refresh); });
@@ -179,6 +183,13 @@ async function doBackup() {
   toast('Backup diunduh. Simpan file-nya di tempat aman.');
 }
 
+// Uang COD yang belum masuk, dari semua pesanan COD yang belum ditandai lunas.
+function unpaidHTML(orders) {
+  const due = orders.filter((o) => o.cod && !o.paid);
+  if (!due.length) return '';
+  return `<div class="recap row spread"><div><b class="due">${rupiah(due.reduce((a, o) => a + o.cod, 0))}</b><div class="muted">COD belum dibayar · ${due.length} pesanan</div></div><button class="btn ghost sm">Lihat</button></div>`;
+}
+
 // Rekap 7 hari terakhir: batang per hari, ditumpuk Wahana/ekspedisi dan Shopee.
 function recapHTML(orders) {
   const days = Array.from({ length: 7 }, (_, i) => { const d = new Date(Date.now() - (6 - i) * 864e5); return { k: dayKey(d), d, w: 0, s: 0 }; });
@@ -217,26 +228,36 @@ async function viewPesanan() {
     </div>
     <div class="install-slot">${installCard()}</div>
     ${remind}
+    <div id="unpaid">${unpaidHTML(orders)}</div>
     ${orders.length ? recapHTML(orders) : ''}
     <h2>Riwayat pesanan</h2>
     ${orders.length ? `<div class="filters">
       <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
       <div class="chips">${[['all', 'Semua'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari'], ['day', listFilter.day ? fmtDay(listFilter.day) : 'Pilih tanggal']].map(([v, l]) => `<button class="pill ${listFilter.date === v ? 'on' : ''}" data-fd="${v}">${v === 'day' ? ic('calendar', 14) : ''}${esc(l)}</button>`).join('')}
         <input type="date" id="fday" value="${esc(listFilter.day)}" tabindex="-1" aria-hidden="true"></div>
-      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak'], ['cod', 'COD']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
+      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak'], ['unpaid', 'COD belum bayar']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
     </div>
     <div class="row spread" style="margin:10px 2px"><span class="muted" id="fcount"></span><button class="btn ghost sm" id="selt">${sel.on ? 'Selesai' : 'Pilih'}</button></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
   $('#bknow')?.addEventListener('click', async () => { await doBackup(); viewPesanan(); });
+  // Kartu "COD belum dibayar": tombol Lihat menyaring riwayat ke COD yang belum lunas.
+  const refreshUnpaid = () => {
+    $('#unpaid').innerHTML = unpaidHTML(orders);
+    $('#unpaid button')?.addEventListener('click', () => {
+      listFilter.status = 'unpaid'; $$('[data-fs]').forEach((x) => x.classList.toggle('on', x.dataset.fs === 'unpaid')); draw();
+      $('#olist').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+  refreshUnpaid();
   if (!orders.length) return;
   const row = (o) => `<div class="item ${sel.on ? 'selmode' : ''}">${sel.on ? `<input type="checkbox" class="sel" data-sel="${o.id}" ${sel.ids.has(o.id) ? 'checked' : ''} aria-label="Pilih">` : ''}
       <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
       <a href="#/cetak?ids=${o.id}" class="grow" style="text-decoration:none;color:inherit;min-width:0">
-        <div class="t">${resiText(o)}</div>
-        <div class="muted ell">${o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</div>
+        <div class="t ell">${resiText(o)}</div>
+        <div class="muted ell">${metaText(o)} · ${fmtDate(o.createdAt)}</div>
       </a>
-      ${o.cod ? `<span class="chip cod">COD</span>` : ''}<span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum'}</span>
       ${orderBtns(o)}
+      <div class="item-chips"><span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum dicetak'}</span>${o.cod ? `<button class="chip cod ${o.paid ? 'paid' : ''}" data-pay="${o.id}" aria-label="Ubah status bayar COD ${esc(rupiah(o.cod))}">${o.paid ? 'COD lunas' : 'COD belum bayar'}</button>` : ''}</div>
     </div>`;
   // Saring tanpa render ulang seluruh halaman supaya kolom cari tetap fokus.
   const draw = () => {
@@ -244,6 +265,12 @@ async function viewPesanan() {
     $('#fcount').textContent = list.length === orders.length ? `${orders.length} pesanan` : `${list.length} dari ${orders.length} pesanan`;
     $('#olist').innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><p>Tidak ada pesanan yang cocok.</p></div>';
     bindOrderBtns(list, viewPesanan);
+    $$('[data-pay]').forEach((b) => b.onclick = async () => {
+      const o = orders.find((x) => x.id === Number(b.dataset.pay));
+      o.paid = !o.paid; await db.put('orders', o);
+      toast(o.paid ? `COD ${rupiah(o.cod)} dari ${o.name} ditandai lunas.` : `${o.name}: COD kembali belum dibayar.`);
+      draw(); refreshUnpaid();
+    });
     $$('[data-sel]').forEach((c) => c.onchange = () => { const id = Number(c.dataset.sel); c.checked ? sel.ids.add(id) : sel.ids.delete(id); bar(); });
     bar();
   };
@@ -297,7 +324,7 @@ function filterOrders(orders, f) {
     if (f.date === 'day' && f.day && k !== f.day) return false;
     if (f.status === 'todo' && o.printed) return false;
     if (f.status === 'done' && !o.printed) return false;
-    if (f.status === 'cod' && !o.cod) return false;
+    if (f.status === 'unpaid' && !(o.cod && !o.paid)) return false;
     return !q || [o.resi, o.name, o.phone, o.address, o.courier].some((v) => String(v || '').toLowerCase().includes(q));
   });
 }
@@ -489,6 +516,8 @@ async function saveItems() {
   if (dn && !await ask(`${dn} pesanan tampak dobel`, 'Pesanan bertanda kuning sudah pernah disimpan atau muncul dua kali. Tetap simpan semuanya?', { ok: 'Tetap simpan' })) return;
   const bad = items.findIndex((it) => (it.kind === 'wahana' ? !it.name?.trim() || !it.address?.trim() : false));
   if (bad >= 0) return toast(`Pesanan ${bad + 1}: nama dan alamat wajib diisi.`);
+  const noCod = items.findIndex((it) => it.kind === 'wahana' && it.courier === COD_SELF && !toCod(it.cod));
+  if (noCod >= 0) return toast(`Pesanan ${noCod + 1}: isi nominal COD untuk COD antar sendiri.`);
   const ids = [], cs = await db.all('customers'), now = new Date().toISOString();
   for (const it of items) {
     if (it.kind === 'shopee') {
@@ -496,7 +525,7 @@ async function saveItems() {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), resi: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), paid: false, resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });
@@ -582,7 +611,7 @@ async function viewAntrian() {
     ${todo.map((o) => `<label class="item" style="cursor:pointer">
       <input type="checkbox" data-q="${o.id}" checked>
       <span class="avatar ${o.type.startsWith('shopee') ? 'shopee' : o.type}">${o.type.startsWith('shopee') ? 'S' : esc((o.courier || 'W')[0])}</span>
-      <span class="grow"><span class="t" style="display:block">${resiText(o)}</span><span class="muted ell" style="display:block">${o.type === 'shopee-img' ? 'Shopee · label asli' : o.type === 'shopee' ? 'Shopee' : `${esc(o.courier)} · ${esc(o.name)}`} · ${fmtDate(o.createdAt)}</span></span>
+      <span class="grow"><span class="t" style="display:block">${resiText(o)}</span><span class="muted ell" style="display:block">${metaText(o)} · ${fmtDate(o.createdAt)}</span></span>
       ${orderBtns(o)}
     </label>`).join('')}
     <button class="btn block" id="go">${ic('printer', 20)} Lanjut ke cetak</button>`

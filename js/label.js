@@ -62,7 +62,10 @@ function setPageSize(shop) {
 export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-const courierName = (o) => (o.courier || 'Wahana').toUpperCase();
+export const COD_SELF = 'COD Antar Sendiri';
+// COD antar sendiri / ketemuan: tanpa kurir, jadi kepala label cukup "COD" dan kotaknya berbunyi BAYAR.
+const courierName = (o) => (o.courier === COD_SELF ? 'COD' : (o.courier || 'Wahana').toUpperCase());
+export const codText = (o) => `${o.courier === COD_SELF ? 'BAYAR' : 'COD'} ${rupiah(o.cod)}`;
 
 export const THANKS = 'Thanks for your order \u263A\uFE0E';
 export const fromLine = (shop) => `${shop.name}${shop.phone ? ` (${shop.phone})` : ''}`;
@@ -85,7 +88,7 @@ export function labelHTML(order, shop, logos) {
     <div class="lb-row"><b>Untuk :</b></div>
     <div class="lb-to"><b>${esc(order.name)}</b>${order.phone ? ` &middot; ${esc(order.phone)}` : ''}</div>
     <div class="lb-addr">${esc(order.address)}</div>
-    ${order.cod ? `<div class="lb-cod">COD ${esc(rupiah(order.cod))}</div>` : ''}
+    ${order.cod ? `<div class="lb-cod">${esc(codText(order))}</div>` : ''}
     <div class="lb-foot">${THANKS}</div>
   </div>`;
 }
