@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 35; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 36; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -139,6 +139,8 @@ const ICON = {
   home: '<path d="M4 10.5 12 4l8 6.5V19a2 2 0 0 1-2 2h-3.5v-5.5h-5V21H6a2 2 0 0 1-2-2z"/>',
   bag: '<path d="M5.5 8h13l-.9 11.1a2 2 0 0 1-2 1.9H8.4a2 2 0 0 1-2-1.9z"/><path d="M9 11V7a3 3 0 0 1 6 0v4"/>',
   store: '<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9h16M9 20v-6h6v6"/>',
+  chart: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+  truck: '<path d="M1 4h13v12H1zM14 8h4l4 4v4h-8"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/>',
   camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
 };
 const ic = (n, sz = 22) => `<svg class="ic" width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n]}</svg>`;
@@ -161,7 +163,7 @@ function bindInstall() {
   if (b) b.onclick = async () => { installEvt.prompt(); await installEvt.userChoice; installEvt = null; render(); };
 }
 
-const EYEBROW = { Pesanan: 'Semua pesanan', Katalog: 'Produk di toko online', 'Pesanan baru': 'Buat label', Cetak: 'Stiker · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
+const EYEBROW = { Rekap: 'Penjualan dari pesanan tercatat', Pesanan: 'Semua pesanan', Katalog: 'Produk di toko online', 'Pesanan baru': 'Buat label', Cetak: 'Stiker · 7 × 5 cm', Pelanggan: 'Tersimpan di HP', Pengaturan: 'Toko & printer' };
 
 function frame(title, body, { back = false, nav = 'pesanan', hero = false } = {}) {
   app.innerHTML = `<header class="top">
@@ -241,7 +243,7 @@ async function viewDashboard() {
       <a href="#/produk">${ic('bag', 22)}<span>Katalog</span></a>
       <a href="#/pelanggan">${ic('users', 22)}<span>Pelanggan</span></a>
       <a href="${esc(TOKO_URL)}" target="_blank" rel="noopener">${ic('store', 22)}<span>Lihat toko</span></a>
-      <a href="#/pengaturan">${ic('gear', 22)}<span>Pengaturan</span></a>
+      <a href="#/rekap">${ic('chart', 22)}<span>Rekap</span></a>
     </div>
     ${orders.length ? `<h2>Grafik paket</h2>${recapHTML(orders)}` : ''}
     <div class="install-slot">${installCard()}</div>`, { nav: 'home', hero: true });
@@ -261,6 +263,47 @@ async function tokoDash() {
     box.innerHTML = `${fresh.length ? `<a class="alertcard" href="#/baru">${ic('bag', 22)}<div class="grow"><b>${fresh.length} pesanan baru dari toko online</b><div class="muted">Ketuk untuk ambil dan buat labelnya.</div></div>${ic('chev', 18)}</a>` : ''}
       ${low.length ? `<h2>Stok menipis</h2><div class="lowlist">${low.slice(0, 5).map((p) => `<a href="#/produk" class="low">${p.thumb ? `<img src="${esc(p.thumb)}" alt="">` : '<span class="ph"></span>'}<span class="grow ell">${esc(p.name)}</span><b class="${p.stock ? '' : 'zero'}">${p.stock ? `sisa ${p.stock}` : 'habis'}</b></a>`).join('')}</div>` : ''}`;
   } catch (e) { console.error(e); }
+}
+
+// ---------- Rekap penjualan ----------
+// Semua angka dari pesanan yang tersimpan di HP ini. Nilai = total pesanan toko, atau nominal COD.
+let rekapRange = 30;
+async function viewRekap() {
+  const all = await db.all('orders');
+  const now = new Date(), d0 = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const from = d0 - (rekapRange - 1) * 864e5;
+  const os = all.filter((o) => new Date(o.createdAt).getTime() >= from);
+  const sum = (xs) => xs.reduce((a, o) => a + nilai(o), 0);
+  const cod = os.filter((o) => o.cod), paid = cod.filter((o) => o.paid);
+  const unknown = os.filter((o) => !nilai(o)).length;
+  // per minggu (8 minggu) untuk grafik
+  const weeks = Array.from({ length: 8 }, (_, i) => { const end = d0 + 864e5 - (7 - i) * 7 * 864e5; return { start: end - 7 * 864e5, end, n: 0, v: 0 }; });
+  for (const o of all) { const t = new Date(o.createdAt).getTime(); const w = weeks.find((x) => t >= x.start && t < x.end); if (w) { w.n++; w.v += nilai(o); } }
+  const maxN = Math.max(1, ...weeks.map((w) => w.n));
+  // ekspedisi
+  const by = new Map();
+  for (const o of os) { const k = o.type?.startsWith('shopee') ? 'Shopee' : o.courier || 'Wahana'; by.set(k, (by.get(k) || 0) + 1); }
+  const couriers = [...by].sort((a, b) => b[1] - a[1]);
+  // produk terlaris (hanya pesanan dari toko online yang menyimpan rincian barang)
+  const prod = new Map();
+  for (const o of os) for (const it of o.items || []) { const x = prod.get(it.name) || { n: 0, v: 0 }; x.n += Number(it.qty) || 0; x.v += (Number(it.qty) || 0) * (Number(it.price) || 0); prod.set(it.name, x); }
+  const best = [...prod].sort((a, b) => b[1].n - a[1].n).slice(0, 5);
+  frame('Rekap', `<div class="chips" style="margin-top:-8px">${[[7, '7 hari'], [30, '30 hari'], [90, '90 hari']].map(([v, l]) => `<button class="pill ${v === rekapRange ? 'on' : ''}" data-rr="${v}">${l}</button>`).join('')}</div>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile pink"><span>Pesanan</span><b>${os.length}</b><em>${rekapRange} hari terakhir</em></div>
+      <div class="tile lime"><span>Rata-rata / hari</span><b>${(os.length / rekapRange).toLocaleString('id-ID', { maximumFractionDigits: 1 })}</b><em>pesanan</em></div>
+      <div class="tile wide"><span>Nilai pesanan tercatat</span><b>${rupiah(sum(os))}</b><em class="muted">${unknown ? `${unknown} pesanan tanpa nilai (Shopee atau transfer lama) tidak ikut dihitung` : 'Semua pesanan punya nilai'}</em></div>
+      ${cod.length ? `<div class="tile lilac wide"><span>COD</span><b>${rupiah(sum(paid))} <small>lunas</small></b><em>${rupiah(sum(cod) - sum(paid))} belum dibayar · ${cod.length - paid.length} pesanan</em></div>` : ''}
+    </div>
+    <h2>Pesanan per minggu</h2>
+    <div class="recap"><div class="wbars">${weeks.map((w) => `<div><span>${w.n || ''}</span><i style="height:${Math.round((w.n / maxN) * 100)}%"></i><small>${new Date(w.start).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })}</small></div>`).join('')}</div>
+      <p class="muted" style="margin:8px 0 0">8 minggu terakhir, tanggal = awal minggu.</p></div>
+    <h2>Ekspedisi</h2>
+    ${couriers.length ? `<div class="recap">${couriers.map(([k, n]) => `<div class="hbar"><span>${esc(k)}</span><i style="--w:${Math.round((n / os.length) * 100)}%"></i><b>${n}</b></div>`).join('')}</div>` : '<div class="empty"><p>Belum ada pesanan di periode ini.</p></div>'}
+    <h2>Produk terlaris</h2>
+    ${best.length ? `<div class="recap">${best.map(([name, x], i) => `<div class="best"><b class="rk">${i + 1}</b><span class="grow ell">${esc(name)}</span><span class="muted">${x.n} pcs · ${rupiah(x.v)}</span></div>`).join('')}</div>`
+      : '<div class="empty"><p>Belum ada data. Produk terlaris dihitung dari pesanan toko online yang diambil lewat Pesanan baru.</p></div>'}`, { back: true, nav: 'home' });
+  $$('[data-rr]').forEach((b) => b.onclick = () => { rekapRange = Number(b.dataset.rr); viewRekap(); });
 }
 
 // ---------- Pesanan ----------
@@ -292,7 +335,7 @@ async function viewPesanan() {
       <label class="search">${ic('search', 18)}<input type="search" id="fq" placeholder="Cari nama, resi, alamat…" value="${esc(listFilter.q)}"></label>
       <div class="chips">${[['all', 'Semua'], ['today', 'Hari ini'], ['yday', 'Kemarin'], ['week', '7 hari'], ['day', listFilter.day ? fmtDay(listFilter.day) : 'Pilih tanggal']].map(([v, l]) => `<button class="pill ${listFilter.date === v ? 'on' : ''}" data-fd="${v}">${v === 'day' ? ic('calendar', 14) : ''}${esc(l)}</button>`).join('')}
         <input type="date" id="fday" value="${esc(listFilter.day)}" tabindex="-1" aria-hidden="true"></div>
-      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['done', 'Sudah dicetak'], ['unpaid', 'COD belum bayar']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
+      <div class="chips">${[['all', 'Semua status'], ['todo', 'Belum dicetak'], ['ship', 'Belum dikirim'], ['sent', 'Dikirim'], ['unpaid', 'COD belum bayar']].map(([v, l]) => `<button class="pill ${listFilter.status === v ? 'on' : ''}" data-fs="${v}">${l}</button>`).join('')}</div>
     </div>
     <div class="row spread" style="margin:10px 2px"><span class="muted" id="fcount"></span><button class="btn ghost sm" id="selt">${sel.on ? 'Selesai' : 'Pilih'}</button></div>
     <div id="olist"></div>` : `<div class="empty">${ic('printer', 40)}<p>Belum ada pesanan.<br>Tekan “Pesanan baru” untuk mulai.</p></div>`}`, { hero: true });
@@ -314,7 +357,7 @@ async function viewPesanan() {
         <div class="muted ell">${metaText(o)} · ${fmtDate(o.createdAt)}</div>
       </a>
       ${orderBtns(o)}
-      <div class="item-chips"><span class="chip ${o.printed ? 'ok' : 'todo'}">${o.printed ? 'Dicetak' : 'Belum dicetak'}</span>${o.cod ? `<button class="chip cod ${o.paid ? 'paid' : ''}" data-pay="${o.id}" aria-label="Ubah status bayar COD ${esc(rupiah(o.cod))}">${o.paid ? 'COD lunas' : 'COD belum bayar'}</button>` : ''}</div>
+      <div class="item-chips"><span class="chip st-${stage(o)}">${STAGE[stage(o)]}</span>${o.printed && !o.shipped ? `<button class="chip ship" data-ship="${o.id}">${ic('truck', 14)} Tandai dikirim</button>` : ''}${o.cod ? `<button class="chip cod ${o.paid ? 'paid' : ''}" data-pay="${o.id}" aria-label="Ubah status bayar COD ${esc(rupiah(o.cod))}">${o.paid ? 'COD lunas' : 'COD belum bayar'}</button>` : ''}</div>
     </div>`;
   // Saring tanpa render ulang seluruh halaman supaya kolom cari tetap fokus.
   const draw = () => {
@@ -322,6 +365,11 @@ async function viewPesanan() {
     $('#fcount').textContent = list.length === orders.length ? `${orders.length} pesanan` : `${list.length} dari ${orders.length} pesanan`;
     $('#olist').innerHTML = list.length ? list.map(row).join('') : '<div class="empty"><p>Tidak ada pesanan yang cocok.</p></div>';
     bindOrderBtns(list, viewPesanan);
+    $$('[data-ship]').forEach((b) => b.onclick = async () => {
+      const o = orders.find((x) => x.id === Number(b.dataset.ship));
+      o.shipped = true; await db.put('orders', o);
+      toast(`${o.name || o.resi || 'Pesanan'} ditandai dikirim.`); draw();
+    });
     $$('[data-pay]').forEach((b) => b.onclick = async () => {
       const o = orders.find((x) => x.id === Number(b.dataset.pay));
       o.paid = !o.paid; await db.put('orders', o);
@@ -366,6 +414,9 @@ async function viewPesanan() {
   draw();
 }
 
+// Tahap pesanan: Baru (belum dicetak) → Dicetak → Dikirim → Lunas (khusus COD).
+const STAGE = { new: 'Baru', printed: 'Dicetak', shipped: 'Dikirim', paid: 'Selesai' };
+const stage = (o) => (o.cod && o.paid && o.shipped ? 'paid' : o.shipped ? 'shipped' : o.printed ? 'printed' : 'new');
 const fmtDay = (k) => new Date(`${k}T00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
 const sel = { on: false, ids: new Set() };
 const listFilter = { q: '', date: 'all', day: '', status: 'all' };
@@ -381,6 +432,8 @@ function filterOrders(orders, f) {
     if (f.date === 'day' && f.day && k !== f.day) return false;
     if (f.status === 'todo' && o.printed) return false;
     if (f.status === 'done' && !o.printed) return false;
+    if (f.status === 'ship' && !(o.printed && !o.shipped)) return false;
+    if (f.status === 'sent' && !o.shipped) return false;
     if (f.status === 'unpaid' && !(o.cod && !o.paid)) return false;
     return !q || [o.resi, o.name, o.phone, o.address, o.courier].some((v) => String(v || '').toLowerCase().includes(q));
   });
@@ -603,7 +656,7 @@ async function saveItems() {
       continue;
     }
     const name = it.name.trim(), address = it.address.trim(), phone = normalizePhone(it.phone) || (it.phone || '').trim();
-    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), total: it.web ? Number(it.web.total) || 0 : 0, paid: false, resi: '', createdAt: now, printed: false }));
+    ids.push(await db.put('orders', { type: 'wahana', name, phone, address, courier: it.courier || 'Wahana', cod: toCod(it.cod), total: it.web ? Number(it.web.total) || 0 : 0, items: it.web?.items || undefined, shipped: false, paid: false, resi: '', createdAt: now, printed: false }));
     if (draft.save) {
       const hit = cs.find((c) => (phone && c.phone === phone) || (!phone && c.name === name));
       await db.put('customers', { ...(hit || {}), name, phone, address });
@@ -776,19 +829,36 @@ async function viewProduk() {
   let user = null, list = [];
   try { user = cloud.configured() && await cloud.currentUser(); if (user) list = await cloud.listProducts({ all: true }); }
   catch (e) { console.error(e); return frame('Katalog', '<div class="empty"><p>Produk gagal dimuat. Periksa internet lalu coba lagi.</p><a class="btn block" href="#/produk">Coba lagi</a></div>', { nav: 'produk' }); }
-  if (!user) return frame('Katalog', '<div class="empty"><p>Login dulu di Atur → Toko online.</p><a class="btn block" href="#/pengaturan">Ke Atur</a></div>', { nav: 'produk' });
-  frame('Katalog', `<button class="btn block big" id="padd">${ic('plus', 20)} Tambah produk</button>
-    <div class="row spread" style="margin:14px 2px 4px"><span class="muted">${list.length} produk · ${list.filter((p) => p.active).length} tampil di toko</span><a class="btn ghost sm" href="${esc(TOKO_URL)}" target="_blank" rel="noopener">Lihat toko</a></div>
-    ${list.length ? list.map((p) => `<div class="item" role="button" tabindex="0" data-pid="${p.id}">
-      <span class="avatar" style="width:52px;height:68px;overflow:hidden">${p.thumb ? `<img src="${p.thumb}" alt="" style="width:100%;height:100%;object-fit:cover">` : ''}</span>
-      <span class="grow"><span class="t ell" style="display:block">${esc(p.name)}</span><span class="muted" style="display:block">${rupiah(p.price)} · stok ${p.stock}</span></span>
-      <span class="chip ${p.active ? (p.stock > 0 ? 'ok' : 'todo') : ''}">${p.active ? (p.stock > 0 ? 'Tampil' : 'Habis') : 'Disembunyikan'}</span></div>`).join('')
-    : '<div class="empty"><p>Belum ada produk. Tekan “Tambah produk” untuk mulai.</p></div>'}`, { nav: 'produk' });
+  if (!user) return frame('Katalog', '<div class="empty"><p>Katalog tersimpan di toko online. Login dulu di Pengaturan → Toko online.</p><a class="btn block" href="#/pengaturan">Ke Pengaturan</a></div>', { nav: 'produk' });
+  let f = 'all';
+  const card = (p) => `<div class="kc ${p.active ? '' : 'off'}">
+      <button class="kph" data-edit="${p.id}" aria-label="Ubah ${esc(p.name)}">${p.thumb ? `<img src="${p.thumb}" alt="">` : ic('camera', 28)}
+        <span class="kst ${!p.active ? 'hid' : p.stock > 0 ? (p.stock <= 2 ? 'low' : '') : 'zero'}">${!p.active ? 'Disembunyikan' : p.stock > 0 ? (p.stock <= 2 ? 'Stok menipis' : 'Tampil') : 'Habis'}</span></button>
+      <div class="kin"><b class="ell">${esc(p.name)}</b><span class="kpr">${rupiah(p.price)}</span>
+        <div class="kst2"><button data-st="${p.id}" data-v="-1" aria-label="Kurangi stok ${esc(p.name)}">−</button><b>${p.stock || 0}</b><button data-st="${p.id}" data-v="1" aria-label="Tambah stok ${esc(p.name)}">+</button></div>
+        <label class="ktg"><input type="checkbox" data-act="${p.id}" ${p.active ? 'checked' : ''}> Tampil di toko</label></div></div>`;
+  frame('Katalog', `<div class="row" style="gap:8px"><button class="btn grow" id="padd">${ic('plus', 20)} Tambah produk</button><a class="btn ghost" href="${esc(TOKO_URL)}" target="_blank" rel="noopener" aria-label="Lihat toko">${ic('store', 20)}</a></div>
+    <div class="chips" id="kf">${[['all', `Semua ${list.length}`], ['on', `Tampil ${list.filter((p) => p.active).length}`], ['low', `Stok menipis ${list.filter((p) => p.active && (p.stock || 0) <= 2).length}`], ['off', `Disembunyikan ${list.filter((p) => !p.active).length}`]].map(([v, l]) => `<button class="pill ${v === f ? 'on' : ''}" data-kf="${v}">${l}</button>`).join('')}</div>
+    <div class="kgrid" id="kg"></div>`, { nav: 'produk' });
+  const draw = () => {
+    const show = list.filter((p) => f === 'all' || (f === 'on' && p.active) || (f === 'off' && !p.active) || (f === 'low' && p.active && (p.stock || 0) <= 2));
+    $('#kg').innerHTML = show.map(card).join('') || `<div class="empty" style="grid-column:1/-1"><p>${list.length ? 'Tidak ada produk di filter ini.' : 'Belum ada produk. Tekan “Tambah produk”, isi foto, nama, dan harga.'}</p></div>`;
+    $$('[data-edit]').forEach((b) => b.onclick = () => editProduk(list.find((p) => p.id === b.dataset.edit), list));
+    $$('[data-st]').forEach((b) => b.onclick = async () => {
+      const p = list.find((x) => x.id === b.dataset.st), old = p.stock || 0;
+      p.stock = Math.max(0, old + Number(b.dataset.v)); if (p.stock === old) return;
+      draw();
+      try { await cloud.patchProduct(p.id, { stock: p.stock }); } catch (e) { console.error(e); p.stock = old; draw(); toast('Stok gagal disimpan. Periksa internet.', 'err'); }
+    });
+    $$('[data-act]').forEach((c) => c.onchange = async () => {
+      const p = list.find((x) => x.id === c.dataset.act); p.active = c.checked; draw();
+      try { await cloud.patchProduct(p.id, { active: p.active }); toast(p.active ? `${p.name} tampil di toko.` : `${p.name} disembunyikan dari toko.`); }
+      catch (e) { console.error(e); p.active = !p.active; draw(); toast('Gagal disimpan. Periksa internet.', 'err'); }
+    });
+  };
   $('#padd').onclick = () => editProduk(null, list);
-  $$('[data-pid]').forEach((el) => {
-    const open = () => editProduk(list.find((p) => p.id === el.dataset.pid), list);
-    el.onclick = open; el.onkeydown = (e) => { if (e.key === 'Enter') open(); };
-  });
+  $$('[data-kf]').forEach((b) => b.onclick = () => { f = b.dataset.kf; $$('[data-kf]').forEach((x) => x.classList.toggle('on', x === b)); draw(); });
+  draw();
 }
 
 async function editProduk(p, list) {
@@ -933,6 +1003,7 @@ async function render() {
     else if (path === '/pengaturan') await viewPengaturan();
     else if (path === '/produk') await viewProduk();
     else if (path === '/pesanan') await viewPesanan();
+    else if (path === '/rekap') await viewRekap();
     else await viewDashboard();
     window.scrollTo(0, 0);
   } catch (e) {
