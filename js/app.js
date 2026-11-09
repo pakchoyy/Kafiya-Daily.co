@@ -10,7 +10,7 @@ const COURIERS = ['Wahana', 'JNE', 'J&T', 'SiCepat', COD_SELF, 'Lainnya'];
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 47; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 48; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -940,6 +940,9 @@ async function editProduk(p, list) {
     <button class="btn ghost block" id="pva" type="button">${ic('plus', 18)} Tambah varian</button>
     <label class="f" for="pz">Ukuran (pisahkan dengan koma, kosongkan kalau all size)</label><input type="text" id="pz" value="${esc((p?.sizes || []).join(', '))}" placeholder="S, M, L, XL">
     <label class="f" for="pd">Deskripsi</label><div class="withmic"><textarea id="pd" placeholder="Bahan, ukuran badan, warna…">${esc(p?.desc || '')}</textarea>${micBtn('pd', 'deskripsi')}</div>
+    <div class="pobox-a"><b>Coba pakai kamera (toko)</b><p class="muted" style="margin:4px 0 8px">Latar foto pertama dihapus otomatis supaya pembeli bisa mencoba bajunya di kamera. Pertama kali butuh unduhan ±45 MB.</p>
+      <div class="cutprev" id="cutp">${p?.cutout ? `<img src="${p.cutout}" alt="Potongan baju">` : '<span class="muted">Belum ada potongan</span>'}</div>
+      <button type="button" class="btn ghost block" id="cutb">${ic('camera', 18)} Hapus latar otomatis</button></div>
     <div class="pobox-a"><div class="row"><input type="checkbox" id="ppo" ${p?.po ? 'checked' : ''}><label for="ppo"><b>Pre-order (PO)</b>: tetap bisa dipesan walau stok 0, pembeli wajib setuju tidak bisa batal</label></div>
       <div id="ppow" ${p?.po ? '' : 'hidden'}><label class="f" for="ppd">Estimasi siap</label><input type="text" id="ppd" value="${esc(p?.poDays || '3-5 hari')}"></div></div>
     <div class="row" style="margin-top:12px"><input type="checkbox" id="pa" ${p?.active === false ? '' : 'checked'}><label for="pa">Tampilkan di toko</label></div>
@@ -967,6 +970,14 @@ async function editProduk(p, list) {
     drawVars();
     $('#pva', m).onclick = () => { vars.push({ name: '', stock: 1 }); drawVars(); $$('[data-vn]', m).at(-1).focus(); };
     const cur = () => photos || shown;
+    let cut = p?.cutout;
+    $('#cutb', m).onclick = async () => {
+      const src = cur()[0]; if (!src) return toast('Tambahkan foto produk dulu.');
+      const b = $('#cutb', m); b.disabled = true; b.textContent = 'Menyiapkan…';
+      try { cut = await cloud.cutout(src, (t) => { b.textContent = t; }); $('#cutp', m).innerHTML = `<img src="${cut}" alt="Potongan baju">`; toast('Latar terhapus. Simpan produk untuk memakainya.'); }
+      catch (err) { console.error(err); toast('Gagal menghapus latar. Coba foto dengan baju yang jelas.', 'err'); }
+      b.disabled = false; b.innerHTML = `${ic('camera', 18)} Hapus latar lagi`;
+    };
     $('#ppo', m).onchange = (e) => { $('#ppow', m).hidden = !e.target.checked; };
     // Tombol − / + di samping kolom jumlah stok.
     m.addEventListener('click', (e) => {
@@ -1015,7 +1026,7 @@ async function editProduk(p, list) {
     $('#psave', m).onclick = async () => {
       const v = { ...(p || {}), name: $('#pn', m).value.trim(), category: $('#pc', m).value.trim(), price: toCod($('#pp', m).value),
         stock: Number($('#ps', m).value) || 0, sizes: $('#pz', m).value.split(',').map((x) => x.trim()).filter(Boolean),
-        desc: $('#pd', m).value.trim(), active: $('#pa', m).checked, po: $('#ppo', m).checked, poDays: $('#ppd', m).value.trim() || '3-5 hari' };
+        desc: $('#pd', m).value.trim(), active: $('#pa', m).checked, cutout: cut || '', po: $('#ppo', m).checked, poDays: $('#ppd', m).value.trim() || '3-5 hari' };
       v.variants = vars.map((x) => ({ name: x.name.trim(), stock: x.stock, ...(x.thumb ? { thumb: x.thumb } : {}) })).filter((x) => x.name);
       if (!p && !cur().length && v.variants[0]?.thumb) photos = [v.variants[0].thumb];
       if (v.variants.length) v.stock = v.variants.reduce((a, x) => a + x.stock, 0);

@@ -450,3 +450,6 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .ph-head .display { margin: 0; }
 .tokolist { margin-top: 14px; padding: 12px 14px; border: 2px solid var(--edge); border-radius: 18px; background: var(--card); }
 .trow { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--tint); }
+
+.cutprev { display: grid; place-items: center; min-height: 120px; margin-bottom: 8px; border-radius: 12px; background: repeating-conic-gradient(#eee8e1 0 25%, #fff 0 50%) 0 0/16px 16px; }
+.cutprev img { max-height: 180px; max-width: 100%; }
