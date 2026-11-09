@@ -11,7 +11,7 @@ const BACKUP_DAYS = 7;
 // Nominal COD dari isian ("150.000", "150rb", "Rp 150,000") ke angka rupiah; 0 = bukan COD.
 const toCod = (v) => { if (typeof v === 'number') return v; const t = String(v || '').toLowerCase(); const n = Number(t.replace(/[^\d]/g, '')) || 0; return /rb|ribu|k\b/.test(t) && n < 10000 ? n * 1000 : n; };
 const cm = (mm) => (Math.round(mm) / 10).toLocaleString('id-ID', { maximumFractionDigits: 1 });
-const APP_VERSION = 38; // naikkan bersama CACHE di sw.js
+const APP_VERSION = 39; // naikkan bersama CACHE di sw.js
 const app = document.getElementById('app');
 
 let shop;
@@ -377,7 +377,6 @@ async function viewPesanan() {
       <div><b>${today}</b><span>Hari ini</span></div>
       <div><b>${orders.length}</b><span>Total pesanan</span></div>
     </div>
-    <div class="install-slot">${installCard()}</div>
     ${remind}
     <div id="unpaid">${unpaidHTML(orders)}</div>
     ${orders.length ? recapHTML(orders) : ''}
@@ -893,7 +892,8 @@ async function viewProduk() {
         <span class="kst ${!p.active ? 'hid' : p.stock > 0 ? (p.stock <= 2 ? 'low' : '') : 'zero'}">${!p.active ? 'Disembunyikan' : p.stock > 0 ? (p.stock <= 2 ? 'Stok menipis' : 'Tampil') : 'Habis'}</span></button>
       <div class="kin"><b class="ell">${esc(p.name)}</b><span class="kpr">${rupiah(p.price)}</span>
         <div class="kst2"><button data-st="${p.id}" data-v="-1" aria-label="Kurangi stok ${esc(p.name)}">−</button><b>${p.stock || 0}</b><button data-st="${p.id}" data-v="1" aria-label="Tambah stok ${esc(p.name)}">+</button></div>
-        <label class="ktg"><input type="checkbox" data-act="${p.id}" ${p.active ? 'checked' : ''}> Tampil di toko</label></div></div>`;
+        <label class="ktg"><input type="checkbox" data-act="${p.id}" ${p.active ? 'checked' : ''}> Tampil di toko</label>
+        <div class="kbtn"><button class="btn ghost sm" data-edit="${p.id}">${ic('edit', 16)} Edit</button><button class="btn danger sm" data-pdel="${p.id}" aria-label="Hapus ${esc(p.name)}">${ic('trash', 16)}</button></div></div></div>`;
   frame('Katalog', `<div class="row" style="gap:8px"><button class="btn grow" id="padd">${ic('plus', 20)} Tambah produk</button><a class="btn ghost" href="${esc(TOKO_URL)}" target="_blank" rel="noopener" aria-label="Lihat toko">${ic('store', 20)}</a></div>
     <div class="chips" id="kf">${[['all', `Semua ${list.length}`], ['on', `Tampil ${list.filter((p) => p.active).length}`], ['low', `Stok menipis ${list.filter((p) => p.active && (p.stock || 0) <= 2).length}`], ['off', `Disembunyikan ${list.filter((p) => !p.active).length}`]].map(([v, l]) => `<button class="pill ${v === f ? 'on' : ''}" data-kf="${v}">${l}</button>`).join('')}</div>
     <div class="kgrid" id="kg"></div>`, { nav: 'produk' });
@@ -901,6 +901,12 @@ async function viewProduk() {
     const show = list.filter((p) => f === 'all' || (f === 'on' && p.active) || (f === 'off' && !p.active) || (f === 'low' && p.active && (p.stock || 0) <= 2));
     $('#kg').innerHTML = show.map(card).join('') || `<div class="empty" style="grid-column:1/-1"><p>${list.length ? 'Tidak ada produk di filter ini.' : 'Belum ada produk. Tekan “Tambah produk”, isi foto, nama, dan harga.'}</p></div>`;
     $$('[data-edit]').forEach((b) => b.onclick = () => editProduk(list.find((p) => p.id === b.dataset.edit), list));
+    $$('[data-pdel]').forEach((b) => b.onclick = async () => {
+      const p = list.find((x) => x.id === b.dataset.pdel);
+      if (!await ask(`Hapus ${p.name}?`, 'Produk dan fotonya hilang dari toko online. Tidak bisa dibatalkan.', { ok: 'Hapus', danger: true })) return;
+      try { await cloud.deleteProduct(p); list.splice(list.indexOf(p), 1); toast('Produk dihapus.'); draw(); }
+      catch (e) { console.error(e); toast('Produk gagal dihapus. Periksa internet.', 'err'); }
+    });
     $$('[data-st]').forEach((b) => b.onclick = async () => {
       const p = list.find((x) => x.id === b.dataset.st), old = p.stock || 0;
       p.stock = Math.max(0, old + Number(b.dataset.v)); if (p.stock === old) return;

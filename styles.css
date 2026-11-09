@@ -382,3 +382,10 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .wlist { margin-top: 12px; border: 2px solid var(--edge); border-radius: 18px; background: var(--card); padding: 2px 6px 2px 14px; }
 .wrow { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--tint); }
 .wrow:last-child { border-bottom: 0; }
+
+.kbtn { display: flex; gap: 6px; }
+.kbtn .btn { flex: 1; min-height: 40px; padding: 0 8px; }
+.kbtn .btn.danger { flex: none; width: 44px; }
+.install-slot:not(:empty) { margin-top: 16px; }
+.install { flex-wrap: wrap; }
+.install .btn { margin-left: auto; }

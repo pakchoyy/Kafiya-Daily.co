@@ -221,7 +221,9 @@ function cartPage() {
   };
 }
 
-const waNumber = (n) => { const d = String(n || '').replace(/\D/g, ''); return d.startsWith('0') ? `62${d.slice(1)}` : d; };
+// Nomor toko bawaan dipakai kalau Info toko belum disimpan di admin.
+const WA_DEFAULT = '081226123571';
+const waNumber = (n) => { const d = String(n || '').replace(/\D/g, '') || WA_DEFAULT; return d.startsWith('0') ? `62${d.slice(1)}` : d; };
 
 // Pesan memakai label "Nama:", "HP:", "Alamat:", "COD" supaya bisa ditempel ke aplikasi cetak.
 function waText(o) {
