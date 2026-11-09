@@ -412,3 +412,17 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .pv-row { grid-template-columns: 44px 1fr 70px 44px; }
 .pv-ph { width: 44px; height: 44px; padding: 0; border: 2px solid var(--edge); border-radius: 10px; background: var(--tint); color: var(--muted); overflow: hidden; display: grid; place-items: center; cursor: pointer; }
 .pv-ph img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ---------- panel suara ---------- */
+.vdlg { max-width: 360px; border: 2px solid var(--edge); }
+.vstep { font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.vdlg h3 { font-family: var(--serif); font-size: 22px; margin: 6px 0 2px; }
+.vhint { margin: 0 0 14px !important; }
+.vmic { width: 96px; height: 96px; margin: 4px auto 10px; display: grid; place-items: center; border: 2px solid #1E1512; border-radius: 50%; background: var(--lime); color: #1E1512; cursor: pointer; box-shadow: 3px 3px 0 #1E1512; }
+.vmic.listen { background: var(--pink); animation: micpulse .9s ease-in-out infinite alternate; }
+.vstate { font-size: 14px; min-height: 40px; }
+.vtext { margin: 8px 0 14px; padding: 12px; min-height: 52px; border: 2px dashed var(--edge); border-radius: 14px; font-size: 18px; font-weight: 700; background: var(--bg); word-break: break-word; }
+.vtext.empty { color: var(--muted); font-weight: 500; }
+.vbtns { display: grid; gap: 8px; }
+.vbtns .btn { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .vmic.listen { animation: none; } }
