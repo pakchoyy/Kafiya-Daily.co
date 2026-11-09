@@ -88,6 +88,11 @@ export async function saveProduct(p, photos) {
   return ref.id;
 }
 
+export async function patchProduct(id, data) {
+  const { fs, db } = await fb();
+  await fs.updateDoc(fs.doc(db, 'products', id), { ...data, updatedAt: Date.now() });
+}
+
 export async function deleteProduct(p) {
   const { fs, db } = await fb();
   for (let i = 0; i < (p.photoCount || 0); i++) await fs.deleteDoc(fs.doc(db, 'photos', `${p.id}_${i}`));
