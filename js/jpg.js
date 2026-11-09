@@ -2,8 +2,7 @@
 // Digambar langsung ke canvas supaya tidak perlu pustaka tambahan.
 import { logoSet } from './logo.js';
 import { drawBarcode } from './barcode.js';
-import { rupiah } from './parser.js';
-import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, fromLine } from './label.js';
+import { LABEL_W, LABEL_H, labelH, paper, cutLines, boxesOf, THANKS, fromLine, COD_SELF, codText } from './label.js';
 
 const K = 300 / 25.4;        // piksel per mm
 const PT = 0.3528;           // mm per pt
@@ -55,7 +54,7 @@ function drawLabel(ctx, o, shop, img) {
   }
   // kepala: logo + nama toko, ekspedisi di kanan, garis bawah
   const lw = drawImgFit(ctx, img.mark, P, 2.5, 14, 8.5, false);
-  font(ctx, 11, true); ctx.textAlign = 'right'; const courier = (o.courier || 'Wahana').toUpperCase();
+  font(ctx, 11, true); ctx.textAlign = 'right'; const courier = o.courier === COD_SELF ? 'COD' : (o.courier || 'Wahana').toUpperCase();
   ctx.fillText(courier, LABEL_W - P, 8.5); const cw = ctx.measureText(courier).width; ctx.textAlign = 'left';
   fitLine(ctx, shop.name || '', P + lw + 1.5, 8, W - lw - cw - 4, 8, 6, true);
   ctx.beginPath(); ctx.moveTo(P, 12); ctx.lineTo(LABEL_W - P, 12); ctx.stroke();
@@ -79,7 +78,7 @@ function drawLabel(ctx, o, shop, img) {
   if (o.cod) {
     ctx.fillRect(P, footY - codH - 0.4, W, codH - 0.6);
     ctx.fillStyle = '#fff'; font(ctx, 11, true); ctx.textAlign = 'center';
-    ctx.fillText(`COD ${rupiah(o.cod)}`, LABEL_W / 2, footY - 2.2, W - 2); ctx.textAlign = 'left'; ctx.fillStyle = '#000';
+    ctx.fillText(codText(o), LABEL_W / 2, footY - 2.2, W - 2); ctx.textAlign = 'left'; ctx.fillStyle = '#000';
   }
   drawFoot(ctx, footY, W, P);
 }
