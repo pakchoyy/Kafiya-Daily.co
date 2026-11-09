@@ -442,3 +442,6 @@ a.tile:active { transform: translate(2px, 2px); box-shadow: none; }
 .pobox-a .row { align-items: flex-start; }
 .pobox-a input[type=checkbox] { margin-top: 2px; flex: none; }
 .kst.po { background: var(--lilac); }
+
+.chip.paybtn { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; padding: 0 12px; background: var(--lime); color: #1E1512; border-color: #1E1512; font-weight: 800; cursor: pointer; }
+.chip.cod.paid { display: inline-flex; align-items: center; gap: 4px; min-height: 34px; }
